@@ -214,6 +214,14 @@ a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 2p
 .site-foot { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .site-foot p { margin: 0; font-family: var(--mono); font-size: 9.5px; line-height: 1.6; letter-spacing: .02em; color: var(--muted); max-width: 110ch; }
 .site-foot a { color: var(--muted); }
+.printwrap { display: grid; gap: 6px; margin-top: 12px; }
+.prints { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; max-height: 320px; overflow-y: auto; padding: 3px; }
+.print { display: grid; gap: 5px; align-content: start; padding: 0; border: 1px solid var(--line); background: var(--surface); text-align: left; cursor: pointer; }
+.print img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: var(--sunk); }
+.print span { padding: 0 7px 7px; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .02em; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
+.print span b { display: block; color: var(--ink); font-weight: 600; font-size: 10px; }
+.print:hover { border-color: var(--ink); }
+.print.on { outline: 3px solid var(--acid); outline-offset: -2px; border-color: var(--ink); }
 .sortsel { display: inline-flex; align-items: center; gap: 6px; }
 .toolbar .sortsel .field { flex: none; padding: 7px 8px; font-family: var(--wide); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .chips { display: flex; gap: 0; flex-wrap: wrap; }
@@ -841,7 +849,7 @@ function renderLibrary() {
     const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : d.name;
     const arch = d.link ? `<a class="arch" href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : `<button class="arch add" data-editlink="${esc(d.id)}">${ICONS.plus}Archidekt link</button>`;
     const art = artNameOf(d);
-    return `<div class="deckbox${art ? " has-art" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(imgUrl(art, "art_crop"))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
+    return `<div class="deckbox${art ? " has-art" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(artSrcOf(d))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
       <div class="cmd">${esc(cmd)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
       <div class="dname">${esc(d.name)}</div>
       <div>${ciPips(ci)}</div>
@@ -920,6 +928,35 @@ function renderAll() {
     }).join("")}</div>`;
   }
   return h + `</div>`;
+}
+function artSrcOf(d) { const a = artNameOf(d); if (!a) return ""; return d.artUrl && d.artFor === a ? d.artUrl : imgUrl(a, "art_crop"); }
+const PRINTS = new Map();
+function loadPrintings(name) {
+  if (PRINTS.has(name)) return;
+  PRINTS.set(name, { state: "loading", list: [] });
+  const q = '!"' + front(name).replace(/"/g, "") + '"';
+  fetch("https://api.scryfall.com/cards/search?unique=art&order=released&dir=desc&q=" + encodeURIComponent(q), { headers: { Accept: "application/json" } })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => {
+      const list = (j.data || []).map(c => {
+        const iu = c.image_uris || (c.card_faces && c.card_faces[0] && c.card_faces[0].image_uris) || {};
+        return iu.art_crop ? { id: c.id, url: iu.art_crop, set: String(c.set || "").toUpperCase(), setName: c.set_name || "", year: String(c.released_at || "").slice(0, 4), artist: c.artist || "" } : null;
+      }).filter(Boolean);
+      PRINTS.set(name, { state: "ok", list });
+    })
+    .catch(() => PRINTS.set(name, { state: "err", list: [] }))
+    .finally(() => { if (S.dialog && S.dialog.kind === "edit") { keepDialogFields(); renderDialog(); } });
+}
+function printingsHtml(d, art) {
+  const p = PRINTS.get(art);
+  if (!p) setTimeout(() => loadPrintings(art), 0);
+  const cur = d.artUrl && d.artFor === art ? d.artId : "";
+  let body;
+  if (!p || p.state === "loading") body = `<p class="arthint">Loading printings from Scryfall…</p>`;
+  else if (p.state === "err") body = `<p class="arthint">Couldn't load printings from Scryfall. <button class="btn sm ghost" data-dlg="prints-retry">Try again</button></p>`;
+  else if (!p.list.length) body = `<p class="arthint">Scryfall has no other artwork for this card.</p>`;
+  else body = `<div class="prints" role="group" aria-label="Choose the artwork"><button type="button" class="print${cur ? "" : " on"}" data-print-art="" aria-pressed="${!cur}"><img src="${esc(imgUrl(art, "art_crop"))}" alt="" loading="lazy"><span><b>Default</b>Scryfall's pick</span></button>${p.list.map(x => `<button type="button" class="print${cur === x.id ? " on" : ""}" data-print-art="${esc(x.id)}" aria-pressed="${cur === x.id}" title="${esc(x.setName)} · ${esc(x.artist)}"><img src="${esc(x.url)}" alt="" loading="lazy"><span><b>${esc(x.set)} · ${esc(x.year)}</b>${esc(x.artist)}</span></button>`).join("")}</div>`;
+  return `<div class="printwrap"><span class="label">Artwork${p && p.list.length ? ` · ${p.list.length} version${p.list.length === 1 ? "" : "s"}` : ""}</span>${body}</div>`;
 }
 function artNameOf(d) { if (d.artOff) return null; if (d.artCard && curMap(d).has(d.artCard)) return d.artCard; return (d.commanders || [])[0] || null; }
 function backupBtns(onlyImport) {
@@ -1263,16 +1300,16 @@ function renderDialog() {
     <div class="db">
       <label class="f"><span class="label">Deck name</span><input class="field" id="e-name" value="${esc(dl.name ?? d.name)}"></label>
       <label class="f"><span class="label">Archidekt link</span><input class="field" id="e-link" value="${esc(dl.link ?? (d.link || ""))}" placeholder="https://archidekt.com/decks/…"></label>
-      <div class="f"><span class="label">Commander</span><div class="cmdpick" style="margin-top:5px">${opts.length ? opts.map(n => `<label><input type="checkbox" name="e-cmd" value="${esc(n)}" ${(d.commanders || []).includes(n) ? "checked" : ""}>${esc(n)}</label>`).join("") : '<span class="muted">No legendary creatures in this list.</span>'}</div></div>
+      <div class="f"><span class="label">Commander</span><div class="cmdpick" style="margin-top:5px">${opts.length ? opts.map(n => `<label><input type="checkbox" name="e-cmd" value="${esc(n)}" ${(dl.cmds || d.commanders || []).includes(n) ? "checked" : ""}>${esc(n)}</label>`).join("") : '<span class="muted">No legendary creatures in this list.</span>'}</div></div>
       <div class="f"><span class="label">Panel art</span>${(() => {
         const art = artNameOf(d); const cmds = d.commanders || [];
         const others = d.cur.map(c => c.n).filter(n => !cmds.includes(n) && typeOf(n) !== "L").sort((a, b) => a.localeCompare(b));
         const opt = (v, l, sel) => `<option value="${esc(v)}" ${sel ? "selected" : ""}>${esc(l)}</option>`;
         const sel = d.artOff ? "__none" : (art || "");
-        return `<div class="artrow">${art ? `<img class="artprev" src="${esc(imgUrl(art, "art_crop"))}" alt="Art from ${esc(art)}" style="object-position:center ${d.artPos || "center"}">` : `<div class="artprev empty-art">No art</div>`}<div class="artbtns">
+        return `<div class="artrow">${art ? `<img class="artprev" src="${esc(artSrcOf(d))}" alt="Art from ${esc(art)}" style="object-position:center ${d.artPos || "center"}">` : `<div class="artprev empty-art">No art</div>`}<div class="artbtns">
           <label class="checkline">Art from <select class="field" id="e-artcard">${cmds.map(n => opt(n, n, sel === n)).join("")}${others.length ? `<optgroup label="Other cards in this deck">${others.map(n => opt(n, n, sel === n)).join("")}</optgroup>` : ""}${opt("__none", "No art", sel === "__none")}</select></label>
           ${art ? `<label class="checkline">Show <select class="field" id="e-artpos">${["top", "center", "bottom"].map(v => `<option value="${v}" ${(d.artPos || "center") === v ? "selected" : ""}>${v === "center" ? "middle" : v}</option>`).join("")}</select> of the image</label>` : ""}
-        </div></div><p class="arthint">Art comes from Scryfall and appears faded behind this deck's panel on the main page.</p>`;
+        </div></div>${art ? printingsHtml(d, art) : ""}<p class="arthint">Art comes from Scryfall and appears faded behind this deck's panel on the main page.</p>`;
       })()}</div>
       <div class="f"><span class="label">Delete</span><div style="margin-top:5px">${dl.del ? `<div class="delbox"><span>Delete ${esc(d.name)} and all of its history?</span>${printedTotal(d) ? `<label class="checkline"><input type="checkbox" id="del-keep" ${dl.keep === false ? "" : "checked"}> Keep its ${printedTotal(d)} printed card${printedTotal(d) > 1 ? "s" : ""} in the card bin</label>` : ""}<span class="confirm"><button class="btn sm danger" data-dlg="del-yes">Delete deck</button><button class="btn sm ghost" data-dlg="del-no">Keep it</button></span></div>` : `<button class="btn sm danger" data-dlg="del">Delete this deck</button>`}</div></div>
     </div>
@@ -1303,13 +1340,14 @@ function renderDialog() {
     <div class="db"><p class="muted" style="margin:0">Your browser blocked copying, so select the text and copy it yourself.</p><textarea class="field" id="c-text" readonly>${esc(dl.text)}</textarea></div>
     <footer><button class="btn primary" data-dlg="close">Done</button></footer></div>`;
   }
-  s.innerHTML = h;
+  const keepScroll = s.dataset.kind === dl.kind ? s.scrollTop : 0; s.dataset.kind = dl.kind;
+  s.innerHTML = h; s.scrollTop = keepScroll;
   if (dl.kind === "new") { updateNewParse(); setTimeout(() => $("#n-name") && !dl.text && $("#n-name").focus(), 0); }
   if (dl.kind === "update") { updateDiff(); setTimeout(() => $("#u-list") && $("#u-list").focus(), 0); }
   if (dl.kind === "binadd") { updateBinAdd(); setTimeout(() => $("#ba-search") && $("#ba-search").focus(), 0); }
   if (dl.kind === "copy") setTimeout(() => { const t = $("#c-text"); if (t) { t.focus(); t.select(); } }, 0);
 }
-function keepDialogFields() { const n = $("#e-name"), l = $("#e-link"); if (S.dialog && n) { S.dialog.name = n.value; S.dialog.link = l ? l.value : S.dialog.link; } }
+function keepDialogFields() { const n = $("#e-name"), l = $("#e-link"); if (S.dialog && n) { S.dialog.name = n.value; S.dialog.link = l ? l.value : S.dialog.link; S.dialog.cmds = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value); } }
 async function shrinkImage(file) {
   const url = URL.createObjectURL(file);
   try {
@@ -1409,6 +1447,12 @@ document.addEventListener("click", e => {
   if (t.dataset.pf) { S.printedFilter = t.dataset.pf; return render(); }
   if (t.dataset.cut && d) return stage(d, "out", t.dataset.cut);
   if (t.dataset.print && d) { const have = curMap(d).get(t.dataset.print) || 0; const p = printedMap(d).get(t.dataset.print) || 0; if (have > p) { printCards(d, [{ n: t.dataset.print, q: have - p }]); save(d); render(); toast(`${t.dataset.print} marked as printed.`); } return; }
+  if (t.dataset.printArt !== undefined && S.dialog && S.dialog.kind === "edit") {
+    const dd = S.decks.get(S.dialog.id); keepDialogFields(); const art = artNameOf(dd); const id = t.dataset.printArt;
+    if (!id) { delete dd.artUrl; delete dd.artId; delete dd.artFor; }
+    else { const x = ((PRINTS.get(art) || {}).list || []).find(y => y.id === id); if (x) { dd.artUrl = x.url; dd.artId = x.id; dd.artFor = art; } }
+    save(dd); render(); renderDialog(); return;
+  }
   if (t.dataset.binrm) { S.confirm = "binrm|" + t.dataset.binrm; return render(); }
   if (t.dataset.binrmYes) { S.loose.cards = S.loose.cards.filter(c => c.n !== t.dataset.binrmYes); S.confirm = null; saveLoose(); render(); return toast("Removed from the bin."); }
   if (t.dataset.binmove) { const [n, id] = JSON.parse(t.dataset.binmove); const got = moveFromBin(n, id); render(); return toast(got ? `Moved ${got}x ${n} from the bin to ${S.decks.get(id).name}.` : "Nothing to move."); }
@@ -1470,6 +1514,7 @@ document.addEventListener("click", e => {
     dd.commanders = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value);
     dd.updatedAt = Date.now(); save(dd); closeDialog(); render(); return;
   }
+  if (dlg === "prints-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); PRINTS.delete(artNameOf(dd)); keepDialogFields(); return renderDialog(); }
   if (dlg === "imp-go") { const dl = S.dialog; applyImport(dl); closeDialog(); go("library"); return toast(`Imported ${dl.decks.length} deck${dl.decks.length === 1 ? "" : "s"}.`); }
   if (dlg === "ba-go") { const p = parseList(($("#ba-list") || {}).value || ""); const n = addToBin(p.cards); closeDialog(); render(); return toast(n ? `Added ${n} card${n > 1 ? "s" : ""} to the card bin.` : "Nothing to add."); }
   if (dlg === "art-rm") { const dd = S.decks.get(S.dialog.id); keepDialogFields(); const old = dd.art; delete dd.art; delete dd.artPos; save(dd); render(); renderDialog(); if (old && S.assets) S.assets.delete(old).catch(() => {}); return toast("Panel art removed."); }
