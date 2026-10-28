@@ -10,6 +10,8 @@ test.beforeEach(async ({ page, context }) => {
   pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await context.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  // These tests run with accounts switched off; tests/cloud.spec.js covers sign-in and sync.
+  await context.route('**/js/firebase-config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.LEDGER_FIREBASE = null;' }));
   await context.route(/scryfall\.(com|io)/, r => r.fulfill({ status: 404, body: '' }));
   await context.route('**/data/cards.json', r => r.fulfill({ path: CARDS, contentType: 'application/json' }));
   await page.goto('/');

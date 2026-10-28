@@ -12,6 +12,8 @@ test.beforeEach(async ({ page, context }) => {
   pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await context.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  // These tests run with accounts switched off; tests/cloud.spec.js covers sign-in and sync.
+  await context.route('**/js/firebase-config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.LEDGER_FIREBASE = null;' }));
   await context.route('https://cards.scryfall.io/**', r => r.fulfill({ body: PNG, contentType: 'image/png' }));
   await context.route('https://api.scryfall.com/**', r => {
     const u = new URL(r.request().url());
