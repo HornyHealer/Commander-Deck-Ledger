@@ -533,3 +533,8 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .cardpv .pv-link { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); white-space: nowrap; padding: 8px 12px; background: var(--ink); color: var(--acid); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: none; }
 .cardpv:not(.tap) .pv-link { display: none; }
 .entry .kind .deckref { font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.swap .i .grab { margin-left: 8px; vertical-align: 1px; display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--rule); background: var(--acid); color: var(--acid-ink); padding: 2px 7px; font: 500 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.swap .i .grab .icon { width: 11px; height: 11px; }
+.swap .i .grab:hover { background: var(--ink); color: var(--acid); }
+.swap .i .grab:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
+.swaps.adds .swap { grid-template-columns: minmax(0, 1fr); }

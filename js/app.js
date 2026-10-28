@@ -503,14 +503,14 @@ function dropIncoming(d, id, toBench) {
 }
 function renderIncoming(d) {
   const list = incomingOf(d); if (!list.length) return "";
+  const grab = new Set(binRows().filter(r => r.srcs.some(x => x.id !== d.id)).map(r => r.n));
   return `<div class="incoming">${list.map(b => {
     const get = toGet(d, b); const need = get.filter(x => x.q > 0); const have = get.filter(x => x.have > 0);
     const nIn = qsum(b.in), nOut = qsum(b.out);
     const conf = S.confirm === "inc-cancel|" + b.id;
     return `<div class="inc" data-inc="${esc(b.id)}"><div class="inc-head"><span class="label">${ICONS.inbox}Incoming since ${fmtShort(b.t)}</span><b>${nIn ? `${nIn} card${nIn > 1 ? "s" : ""} coming in` : "No new cards"}${nOut ? `, ${nOut} leaving` : ""}</b></div>
-      ${swapLines(b)}${b.note ? `<div class="note">${esc(b.note)}</div>` : ""}
+      ${swapLines(b, x => grab.has(x.n) && need.some(y => y.n === x.n) ? `<button class="grab" title="Take a spare copy out of the card bin for this deck" data-binmove="${esc(JSON.stringify([x.n, d.id]))}">${ICONS.down}Grab from bin</button>` : "")}${b.note ? `<div class="note">${esc(b.note)}</div>` : ""}
       ${have.length ? `<div class="inc-have">Already in your box: ${have.map(x => esc(x.n) + (x.have > 1 ? ` ×${x.have}` : "")).join(", ")}</div>` : ""}
-      ${(() => { const bin = new Map(binRows().filter(r => r.srcs.some(x => x.id !== d.id)).map(r => [r.n, r])); const hits = need.filter(x => bin.has(x.n)); return hits.length ? `<div class="inc-have">Spare in the card bin: ${hits.map(x => `<button class="flag good flagbtn" title="Move the spare copy into this deck" data-binmove="${esc(JSON.stringify([x.n, d.id]))}">${esc(x.n)} · move here</button>`).join("")}</div>` : ""; })()}
       <div class="inc-acts">${conf ? `<span class="confirm">Cancel this incoming change? <button class="btn sm danger" data-inc-cancel-yes="${esc(b.id)}">Cancel it</button><button class="btn sm ghost" data-act="inc-cancel-no">Keep</button></span>` : `<button class="btn sm primary" data-arrive="${esc(b.id)}">${ICONS.printed}Arrived</button>${need.length ? `<button class="btn sm" data-inc-copy="${esc(b.id)}" title="Copy the cards you still need to get">${ICONS.copy}Copy list<span class="mono muted">${qsum(need)}</span></button>` : ""}<button class="btn sm ghost" data-inc-bench="${esc(b.id)}">Back to bench</button><button class="btn sm ghost" data-inc-cancel="${esc(b.id)}">Cancel</button>`}</div></div>`;
   }).join("")}</div>`;
 }
@@ -1417,12 +1417,14 @@ function renderPrinted(d) {
   return h;
 }
 
-function swapLines(e) {
+function swapLines(e, inExtra) {
   const o = e.out || [], i = e.in || [];
   const fmt = x => esc(x.n) + (x.q > 1 ? ` ×${x.q}` : "");
-  if (o.length === i.length && o.length) return `<div class="swaps">${o.map((x, k) => `<div class="swap"><span class="o">${fmt(x)}</span><span class="arr">→</span><span class="i">${fmt(i[k])}</span></div>`).join("")}</div>`;
+  const fin = x => fmt(x) + (inExtra ? inExtra(x) : "");
+  if (!o.length && i.length) return `<div class="swaps adds">${i.map(x => `<div class="swap"><span class="i">${fin(x)}</span></div>`).join("")}</div>`;
+  if (o.length === i.length && o.length) return `<div class="swaps">${o.map((x, k) => `<div class="swap"><span class="o">${fmt(x)}</span><span class="arr">→</span><span class="i">${fin(i[k])}</span></div>`).join("")}</div>`;
   const n = Math.max(o.length, i.length); let s = "";
-  for (let k = 0; k < n; k++) s += `<div class="swap"><span class="o">${o[k] ? fmt(o[k]) : ""}</span><span class="arr">${o[k] && i[k] ? "→" : ""}</span><span class="i">${i[k] ? fmt(i[k]) : ""}</span></div>`;
+  for (let k = 0; k < n; k++) s += `<div class="swap"><span class="o">${o[k] ? fmt(o[k]) : ""}</span><span class="arr">${o[k] && i[k] ? "→" : ""}</span><span class="i">${i[k] ? fin(i[k]) : ""}</span></div>`;
   return `<div class="swaps">${s}</div>`;
 }
 function renderHistory(d) {

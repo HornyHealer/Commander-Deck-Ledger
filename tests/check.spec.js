@@ -198,8 +198,11 @@ test('a bin card set to incoming can be moved in later, leaving the bin, and und
   const inc = page.locator('.inc');
   await expect(inc).toContainText('Arcane Signet');
   // Arcane Signet was added to the bin directly; Fervent Champion is a spare cut from Fixture Zagras.
-  await inc.locator('[data-binmove]', { hasText: 'Arcane Signet' }).click();
-  await inc.locator('[data-binmove]', { hasText: 'Fervent Champion' }).click();
+  // Each incoming card with a spare in the bin has its own "Grab from bin" button; Krenko doesn't.
+  await expect(inc.locator('.swap', { hasText: 'Krenko, Mob Boss' }).locator('.grab')).toHaveCount(0);
+  await expect(inc).not.toContainText('Spare in the card bin');
+  await inc.locator('.swap', { hasText: 'Arcane Signet' }).getByRole('button', { name: 'Grab from bin' }).click();
+  await inc.locator('.swap', { hasText: 'Fervent Champion' }).getByRole('button', { name: 'Grab from bin' }).click();
   await expect(deckRow(page, 'Arcane Signet')).toHaveCount(1);
   await expect(deckRow(page, 'Fervent Champion')).toHaveCount(1);
   await expect(inc).not.toContainText('Arcane Signet');
