@@ -466,3 +466,19 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .cmp-diff { grid-template-columns: 1fr; }
   .entry .kind .btn.ghost { margin-left: 0; }
 }
+
+/* Incoming: changes waiting for their cards */
+.pills { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; }
+.tp-pill.tp-inc { background: var(--surface); color: var(--cyan); outline-color: var(--cyan); }
+.bench .foot .row2 { flex-wrap: wrap; }
+.bench .foot .row2 .btn.primary { margin-left: auto; }
+.benchhint { margin: 0; font-size: 12px; color: var(--muted); }
+.flag.leaving { background: transparent; color: var(--cyan); outline: 1px dashed var(--cyan); outline-offset: -1px; }
+.incoming { display: grid; gap: 10px; margin-bottom: 14px; }
+.inc { display: grid; gap: 8px; padding: 10px 12px; background: var(--surface); outline: 1px solid var(--cyan); outline-offset: -1px; box-shadow: inset 4px 0 0 var(--cyan); }
+.inc-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.inc-head .label { display: inline-flex; gap: 5px; align-items: center; color: var(--cyan); }
+.inc .note { font-size: 13px; color: var(--muted); border-left: 3px solid var(--acid); padding-left: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.inc-have { font-size: 12px; color: var(--muted); }
+.inc-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.inc-acts .btn .mono { margin-left: 6px; }

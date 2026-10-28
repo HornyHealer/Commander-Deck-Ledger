@@ -77,6 +77,7 @@ const ICONS = {
   stack: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="2" width="8" height="10.5" rx="1"/><path d="M2.5 4.5v9h7.5"/></svg>',
   print: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 6V2.5h7V6"/><rect x="2" y="6" width="12" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/></svg>',
   printed: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  inbox: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v7M5 6.5 8 9.5l3-3"/><path d="M2.5 9.5h3l1 2h3l1-2h3V13.5h-11z"/></svg>',
   tag: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 2.5h5l6 6-5 5-6-6z"/><circle cx="5.5" cy="5.5" r="1"/></svg>',
   list: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M3 8h10M3 12h6"/><path d="m11 11 1.5 1.5L15 10"/></svg>',
 };
@@ -214,6 +215,7 @@ function binRows() {
   }
   for (const c of S.loose.cards || []) { if (c.q > 0) { const r = row(c.n); r.total += c.q; r.srcs.push({ id: "_bin", name: looseLabel(c), q: c.q, loose: true, direct: !c.from }); } }
   for (const d of S.decks.values()) for (const u of unprinted(d)) if (map.has(u.n)) map.get(u.n).needs.push({ id: d.id, name: d.name, q: u.q });
+  for (const d of S.decks.values()) for (const b of incomingOf(d)) for (const x of b.in) if (map.has(x.n)) { const r = map.get(x.n); (r.inc || (r.inc = [])).push(d.name); }
   return [...map.values()].sort((a, b) => a.n.localeCompare(b.n));
 }
 function moveFromBin(n, targetId) {
@@ -275,6 +277,14 @@ function applyChange(d, outs, ins, note, kind = "swap") {
 }
 function undoLast(d) {
   const e = d.log[d.log.length - 1]; if (!e || e.kind === "create") return;
+  if (e.kind === "incoming") { d.incoming = incomingOf(d).filter(b => b.id !== e.id); if (!d.incoming.length) delete d.incoming; d.log.pop(); d.updatedAt = Date.now(); return; }
+  undoEntry(d, e);
+  // Undoing an arrival also undoes its swap and puts the cards back on the incoming list.
+  let sw = e.inc ? e : null;
+  if (e.kind === "print" && e.arrival) { const prev = d.log[d.log.length - 1]; if (prev && prev.inc && prev.inc.id === e.arrival) { undoEntry(d, prev); sw = prev; } }
+  if (sw) { const b = { id: sw.inc.id, t: sw.inc.t, out: sw.out || [], in: sw.in || [] }; if (sw.note) b.note = sw.note; if (sw.kind === "import") b.kind = "import"; d.incoming = [...incomingOf(d), b].sort((x, y) => x.t - y.t); }
+}
+function undoEntry(d, e) {
   const cm = curMap(d);
   for (const i of e.in || []) { const v = (cm.get(i.n) || 0) - i.q; if (v > 0) cm.set(i.n, v); else cm.delete(i.n); }
   for (const o of e.out || []) cm.set(o.n, (cm.get(o.n) || 0) + o.q);
@@ -286,6 +296,60 @@ function undoLast(d) {
   if (e.kind === "print") for (const c of e.cards || []) { const p = d.printed.find(y => y.n === c.n); if (p) { p.q -= c.q; if (p.q <= 0) d.printed = d.printed.filter(y => y !== p); } }
   if (e.kind === "unprint") for (const c of e.cards || []) { const p = d.printed.find(y => y.n === c.n); if (p) p.q += c.q; else d.printed.push({ n: c.n, q: c.q, at: c.at || Date.now(), o: c.o ?? 1 }); }
   d.log.pop(); d.updatedAt = Date.now();
+}
+
+// ---------- incoming: changes waiting for their cards to arrive ----------
+// Saved swaps stay off the deck list until the cards show up, so the list matches what's in the box.
+const incomingOf = d => Array.isArray(d.incoming) ? d.incoming : [];
+function leavingMap(d) { const m = new Map(); for (const b of incomingOf(d)) for (const o of b.out) m.set(o.n, (m.get(o.n) || 0) + o.q); return m; }
+// Incoming cards not already sitting in the box as printed spares.
+function toGet(d, b) {
+  const cm = curMap(d), pm = printedMap(d); const spare = new Map();
+  for (const [n, q] of pm) { const v = q - (cm.get(n) || 0); if (v > 0) spare.set(n, v); }
+  return b.in.map(x => { const have = Math.min(x.q, spare.get(x.n) || 0); if (have) spare.set(x.n, spare.get(x.n) - have); return { n: x.n, q: x.q - have, have }; });
+}
+function saveIncoming(d) {
+  const b = d.bench; const out = b.out.filter(x => x.q > 0), ins = b.in.filter(x => x.q > 0);
+  if (!out.length && !ins.length) return;
+  const cm = curMap(d), lv = leavingMap(d);
+  const over = out.find(x => x.q > (cm.get(x.n) || 0) - (lv.get(x.n) || 0));
+  if (over) return toast(`${over.n} is already leaving in another incoming change.`);
+  const note = (($("#b-note") || {}).value || b.note || "").trim();
+  const batch = { id: uid(), t: Date.now(), out, in: ins }; if (note) batch.note = note; if (b.kind === "import") batch.kind = "import";
+  d.incoming = [...incomingOf(d), batch];
+  const e = { id: batch.id, t: batch.t, kind: "incoming", out, in: ins }; if (note) e.note = note; d.log.push(e);
+  d.bench = { out: [], in: [], note: "" }; clearTimeout(benchTimers.get(d.id)); d.updatedAt = Date.now();
+  save(d); render(); toast(`Saved as incoming. The deck list stays as it is until you press Arrived.`);
+}
+function arrive(d, id) {
+  const b = incomingOf(d).find(x => x.id === id); if (!b) return;
+  d.incoming = incomingOf(d).filter(x => x !== b); if (!d.incoming.length) delete d.incoming;
+  applyChange(d, b.out, b.in, b.note || "", b.kind === "import" ? "import" : "swap");
+  const sw = d.log[d.log.length - 1]; sw.inc = { id: b.id, t: b.t };
+  const cm = curMap(d), pm = printedMap(d); const need = [];
+  for (const x of b.in) { const v = Math.min(x.q, (cm.get(x.n) || 0) - (pm.get(x.n) || 0)); if (v > 0) need.push({ n: x.n, q: v }); }
+  if (need.length) { for (const x of need) markPrinted(d, x.n, x.q); d.log.push({ id: uid(), t: Date.now(), kind: "print", cards: need, arrival: b.id }); }
+  save(d); render(); toast(`Arrived. The swap is in the deck${need.length ? ` and ${qsum(need)} card${qsum(need) > 1 ? "s are" : " is"} marked printed` : ""}. Undo it from History if that was early.`);
+}
+function dropIncoming(d, id, toBench) {
+  const b = incomingOf(d).find(x => x.id === id); if (!b) return;
+  if (toBench && (d.bench.out.length || d.bench.in.length)) return toast("Save or clear the swap bench first.");
+  d.incoming = incomingOf(d).filter(x => x !== b); if (!d.incoming.length) delete d.incoming;
+  d.log = d.log.filter(e => !(e.kind === "incoming" && e.id === b.id));
+  if (toBench) { d.bench = { out: b.out, in: b.in, note: b.note || "" }; if (b.kind === "import") d.bench.kind = "import"; }
+  d.updatedAt = Date.now(); save(d); render(); toast(toBench ? "Back on the swap bench. Change it, then save again." : "Incoming change cancelled.");
+}
+function renderIncoming(d) {
+  const list = incomingOf(d); if (!list.length) return "";
+  return `<div class="incoming">${list.map(b => {
+    const get = toGet(d, b); const need = get.filter(x => x.q > 0); const have = get.filter(x => x.have > 0);
+    const nIn = qsum(b.in), nOut = qsum(b.out);
+    const conf = S.confirm === "inc-cancel|" + b.id;
+    return `<div class="inc" data-inc="${esc(b.id)}"><div class="inc-head"><span class="label">${ICONS.inbox}Incoming since ${fmtShort(b.t)}</span><b>${nIn ? `${nIn} card${nIn > 1 ? "s" : ""} coming in` : "No new cards"}${nOut ? `, ${nOut} leaving` : ""}</b></div>
+      ${swapLines(b)}${b.note ? `<div class="note">${esc(b.note)}</div>` : ""}
+      ${have.length ? `<div class="inc-have">Already in your box: ${have.map(x => esc(x.n) + (x.have > 1 ? ` ×${x.have}` : "")).join(", ")}</div>` : ""}
+      <div class="inc-acts">${conf ? `<span class="confirm">Cancel this incoming change? <button class="btn sm danger" data-inc-cancel-yes="${esc(b.id)}">Cancel it</button><button class="btn sm ghost" data-act="inc-cancel-no">Keep</button></span>` : `<button class="btn sm primary" data-arrive="${esc(b.id)}">${ICONS.printed}Arrived</button>${need.length ? `<button class="btn sm" data-inc-copy="${esc(b.id)}">${ICONS.copy}Copy list<span class="mono muted">${qsum(need)}</span></button>` : ""}<button class="btn sm ghost" data-inc-bench="${esc(b.id)}">Back to bench</button><button class="btn sm ghost" data-inc-cancel="${esc(b.id)}">Cancel</button>`}</div></div>`;
+  }).join("")}</div>`;
 }
 
 // ---------- persistence ----------
@@ -361,6 +425,7 @@ window.addEventListener("pagehide", () => { if (persistTimer) { clearTimeout(per
 window.addEventListener("storage", e => { if (e.key === STORE_KEY && !CLOUD.user) { loadStore(); safeRender(); } });
 function cardLists(d) {
   const out = [d.cur, d.orig, d.printed, d.bench && d.bench.out, d.bench && d.bench.in];
+  for (const b of incomingOf(d)) out.push(b.out, b.in);
   for (const e of d.log || []) { out.push(e.out, e.in, e.cards); if (e.from && Array.isArray(e.from.loose)) out.push(e.from.loose); }
   return out.filter(Array.isArray);
 }
@@ -718,7 +783,7 @@ function renderLibrary() {
       ${d.desc ? `<div class="ddesc">${esc(d.desc)}</div>` : ""}
       <div class="pipline">${ciPips(ci)}<span class="bpill" title="Bracket estimate">Bracket ${esc(bracketOf(d.cur).label)}</span></div>
       <div class="stats"><span><b>${t}</b> in deck</span><span><b>${printedTotal(d)}</b> printed</span><span><b>${changes}</b> changes</span></div>
-      ${toPrint ? `<div class="tp-pill"><b class="mono">${toPrint}</b> to print</div>` : `<div class="tp-pill done">All printed</div>`}
+      <div class="pills">${toPrint ? `<div class="tp-pill"><b class="mono">${toPrint}</b> to print</div>` : `<div class="tp-pill done">All printed</div>`}${incomingOf(d).length ? `<div class="tp-pill tp-inc"><b class="mono">${incomingOf(d).reduce((a, b) => a + qsum(b.in), 0)}</b> incoming</div>` : ""}</div>
       <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
       <div class="tile-foot">${arch}</div>
     </div></div>`;
@@ -892,7 +957,7 @@ function renderBin() {
     const lq = r.srcs.filter(s => s.loose).reduce((a, s) => a + s.q, 0);
     const rm = lq ? (S.confirm === "binrm|" + r.n ? `<span class="confirm" style="margin-top:4px">Throw out ${lq} cop${lq > 1 ? "ies" : "y"} not tied to a deck? <button class="btn sm danger" data-binrm-yes="${esc(r.n)}">Throw out</button><button class="btn sm ghost" data-act="binrm-no">Keep</button></span>` : `<button class="iconbtn" title="Throw out copies not tied to a deck" aria-label="Throw out ${esc(r.n)} from the bin" data-binrm="${esc(r.n)}">${ICONS.x}</button>`) : "";
     const moves = r.needs.map(nd => `<button class="btn sm" data-binmove="${esc(JSON.stringify([r.n, nd.id]))}">Move to ${esc(nd.name)}</button>`).join("");
-    return `<div class="row"><span class="q">${r.total}</span><span class="nm"><span>${esc(r.n)}</span>${r.needs.length ? '<span class="flag good">Needed</span>' : ""}<small>${from}</small>${moves ? `<span class="bin-moves">${moves}</span>` : ""}${rm && S.confirm === "binrm|" + r.n ? rm : ""}</span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${rm && S.confirm !== "binrm|" + r.n ? rm : ""}<a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+    return `<div class="row"><span class="q">${r.total}</span><span class="nm"><span>${esc(r.n)}</span>${r.needs.length ? '<span class="flag good">Needed</span>' : ""}${r.inc ? `<span class="flag leaving" title="Part of an incoming change">Incoming for ${esc([...new Set(r.inc)].join(", "))}</span>` : ""}<small>${from}</small>${moves ? `<span class="bin-moves">${moves}</span>` : ""}${rm && S.confirm === "binrm|" + r.n ? rm : ""}</span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${rm && S.confirm !== "binrm|" + r.n ? rm : ""}<a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
   };
   h += `<div class="groups bin-list">`;
   for (const g of TYPE_ORDER) {
@@ -1117,7 +1182,7 @@ function cardSorter(mode) {
 }
 function renderCurrent(d) {
   const f = norm(S.filter); const staged = new Map(d.bench.out.map(o => [o.n, o.q])); const pm = printedMap(d); const todo = unprinted(d);
-  const bin = new Map(binRows().filter(r => r.srcs.some(s => s.id !== d.id)).map(r => [r.n, r]));
+  const bin = new Map(binRows().filter(r => r.srcs.some(s => s.id !== d.id)).map(r => [r.n, r])); const leaving = leavingMap(d);
   const groups = new Map(); const cmds = d.commanders || [];
   for (const c of d.cur) {
     if (f && !norm(c.n).includes(f)) continue;
@@ -1127,7 +1192,7 @@ function renderCurrent(d) {
   }
   let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"}>Unprinted only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div><span class="muted" style="font-size:12px;flex-basis:100%">Drag a card onto <b>Removed</b> or the bench, or use the scissors.</span></div>`;
   if (todo.length) h += `<div class="toprint"><span><b class="mono">${qsum(todo)}</b> card${qsum(todo) > 1 ? "s" : ""} not printed yet</span><span class="grow"></span><button class="btn sm" data-act="copy-toprint">${ICONS.copy}Copy print list</button>${S.confirm === "printall" ? `<span class="confirm">Mark all ${qsum(todo)} as printed? <button class="btn sm primary" data-act="printall-yes">Mark printed</button><button class="btn sm ghost" data-act="printall-no">Cancel</button></span>` : `<button class="btn sm" data-act="printall">${ICONS.print}Mark all printed</button>`}</div>`;
-  h += rolesBar(d);
+  h += renderIncoming(d) + rolesBar(d);
   if (!groups.size) return h + `<p class="muted">${S.roleFilter ? `No cards${S.filter ? ` matching “${esc(S.filter)}”` : ""} have the ${esc(ROLE_NAME[S.roleFilter])} role.` : `No cards match “${esc(S.filter)}”.`}</p>`;
   h += `<div class="groups">`;
   for (const g of ["CMD", ...TYPE_ORDER]) {
@@ -1140,7 +1205,8 @@ function renderCurrent(d) {
       const inBin = pq < c.q && bin.has(c.n) ? `<button class="flag good flagbtn" title="Move a printed copy from the bin into this deck" data-binmove="${esc(JSON.stringify([c.n, d.id]))}">In bin · move here</button>` : "";
       const rf = flagsOf(r), lim = limitOf(r);
       const ruleFlags = (rf & F.BANNED ? '<span class="flag bad">Banned</span>' : rf & F.NOT_LEGAL ? '<span class="flag bad">Not legal</span>' : "") + (r && !isBasic(c.n) && lim !== -1 && c.q > (lim > 0 ? lim : 1) ? '<span class="flag bad">Too many copies</span>' : "");
-      const flags = prFlag + inBin + ruleFlags + (!r ? '<span class="flag warn">Unrecognized</span>' : "") + (outsideCI(d, c.n) ? '<span class="flag bad">Outside colors</span>' : "") + (st ? `<span class="flag bad">Cutting${c.q > 1 ? " " + st : ""}</span>` : "");
+      const lq = leaving.get(c.n) || 0;
+      const flags = (lq ? `<span class="flag leaving">Leaving${c.q > 1 ? " " + lq : ""}</span>` : "") + prFlag + inBin + ruleFlags + (!r ? '<span class="flag warn">Unrecognized</span>' : "") + (outsideCI(d, c.n) ? '<span class="flag bad">Outside colors</span>' : "") + (st ? `<span class="flag bad">Cutting${c.q > 1 ? " " + st : ""}</span>` : "");
       const roles = rolesOf(d, c); const editing = S.roleEdit === c.n;
       const rtags = roles.length ? `<span class="rtags">${roles.map(x => `<span class="rtag">${ROLE_NAME[x] || esc(x)}</span>`).join("")}</span>` : "";
       const redit = editing ? `<span class="roleedit" role="group" aria-label="Roles for ${esc(c.n)}">${ROLES.map(([id, l]) => `<button class="chip sm${roles.includes(id) ? " on" : ""}" aria-pressed="${roles.includes(id)}" data-roletoggle="${esc(JSON.stringify([c.n, id]))}">${ROLE_NAME[id]}</button>`).join("")}${d.roles && d.roles[roleKey(c)] ? `<button class="btn sm ghost" data-rolereset="${esc(c.n)}">Use suggested</button>` : ""}<button class="btn sm" data-act="role-done">Done</button></span>` : "";
@@ -1160,9 +1226,9 @@ function renderRemoved(d, removed) {
     const rc = rec(r.n); const e = r.e;
     const repl = e && e.in && e.in.length ? `replaced by ${e.in.map(i => esc(i.n)).join(", ")}` : "";
     const sub = e ? `Cut ${fmtShort(e.t)}${repl ? " · " + repl : ""}` : "Out of the current list";
-    const staged = d.bench.in.some(i => i.n === r.n);
+    const staged = d.bench.in.some(i => i.n === r.n) ? "Coming back" : incomingOf(d).some(b => b.in.some(i => i.n === r.n)) ? "Incoming" : "";
     return `<div class="row" draggable="true" data-drag="removed" data-name="${esc(r.n)}"><span class="q">${r.q}</span>
-      <span class="nm"><span>${esc(r.n)}</span>${staged ? '<span class="flag good">Coming back</span>' : ""}${r.printed ? "" : (() => { for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if (e.kind === "unprint" && e.cards.some(c => c.n === r.n)) return e.to ? `<span class="flag plain">Moved to ${esc(e.to.name)}</span>` : '<span class="flag plain">Taken off printed</span>'; } return '<span class="flag plain">Never printed</span>'; })()}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}
+      <span class="nm"><span>${esc(r.n)}</span>${staged ? `<span class="flag ${staged === "Incoming" ? "leaving" : "good"}">${staged}</span>` : ""}${r.printed ? "" : (() => { for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if (e.kind === "unprint" && e.cards.some(c => c.n === r.n)) return e.to ? `<span class="flag plain">Moved to ${esc(e.to.name)}</span>` : '<span class="flag plain">Taken off printed</span>'; } return '<span class="flag plain">Never printed</span>'; })()}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}
       <span class="acts" style="opacity:1"><button class="iconbtn" title="Bring back" aria-label="Bring ${esc(r.n)} back" data-bringback="${esc(r.n)}">${ICONS.back2}</button><a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
   }).join("")}</div>`;
 }
@@ -1204,9 +1270,11 @@ function renderHistory(d) {
     let title;
     const pl = e.cards ? qsum(e.cards) : 0; const s = pl > 1 ? "s" : "";
     if (e.kind === "create") title = `Deck created with ${e.count} cards`;
+    else if (e.kind === "incoming") { const ni = qsum(e.in || []); title = `Marked ${ni} card${ni === 1 ? "" : "s"} as incoming`; }
+    else if (e.kind === "print" && e.arrival) title = `Arrived: ${pl} card${s} marked printed`;
     else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(esc).join(", ") + ")" : ""}` : `Printed ${pl} card${s}`;
     else if (e.kind === "unprint") title = e.to ? `Moved ${pl} printed card${s} to ${esc(e.to.name)}` : `Removed ${pl} card${s} from printed`;
-    else title = changeTitle(e);
+    else title = changeTitle(e) + (e.inc ? `<span class="flag plain">Incoming since ${fmtShort(e.inc.t)}</span>` : "");
     const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">Undo this change? <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
     const view = e.kind === "create" || isChange(e) ? `<button class="btn sm ghost" data-snap="${e.kind === "create" ? "start" : esc(e.id)}">${e.kind === "create" ? "View original list" : "View deck after this"}</button>` : "";
     return `<div class="entry"><div class="when">${fmtDate(e.t)}</div><div class="what"><div class="kind">${title}${undo}${view}</div>${e.kind === "create" ? "" : e.cards ? `<div class="plines ${e.kind}">${e.cards.map(c => `<span>${c.q}x ${esc(c.n)}</span>`).join("")}</div>` : swapLines(e)}${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}</div></div>`;
@@ -1235,7 +1303,8 @@ function renderBench(d) {
     <div class="foot">
       <textarea class="field" id="b-note" placeholder="Why the change? (optional)" aria-label="Note for this change">${esc(b.note || "")}</textarea>
       ${pair ? `<div class="pairhint">${pair}</div>` : ""}
-      <div class="row2"><button class="btn ghost sm" data-act="clear-bench" ${n ? "" : "disabled"}>Clear</button><button class="btn primary" data-act="commit" ${n ? "" : "disabled"}>Save change</button></div>
+      <div class="row2"><button class="btn ghost sm" data-act="clear-bench" ${n ? "" : "disabled"}>Clear</button><button class="btn" data-act="save-incoming" ${n ? "" : "disabled"} title="Keep the deck list as it is until the new cards arrive">${ICONS.inbox}Save as incoming</button><button class="btn primary" data-act="commit" ${n ? "" : "disabled"}>Save change</button></div>
+      <p class="benchhint">Waiting on cards? <b>Save as incoming</b> keeps the deck list matching your box until they arrive.</p>
     </div></aside>`;
 }
 
@@ -1488,6 +1557,11 @@ document.addEventListener("click", e => {
   if (t.dataset.allchip) { S.allChip = t.dataset.allchip; return render(); }
   if (t.dataset.pf) { S.printedFilter = t.dataset.pf; return render(); }
   if (t.dataset.cut && d) return stage(d, "out", t.dataset.cut);
+  if (t.dataset.arrive && d) return arrive(d, t.dataset.arrive);
+  if (t.dataset.incCopy && d) { const b = incomingOf(d).find(x => x.id === t.dataset.incCopy); if (b) copyText(toGet(d, b).filter(x => x.q > 0).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming list"); return; }
+  if (t.dataset.incBench && d) return dropIncoming(d, t.dataset.incBench, true);
+  if (t.dataset.incCancel && d) { S.confirm = "inc-cancel|" + t.dataset.incCancel; return render(); }
+  if (t.dataset.incCancelYes && d) { S.confirm = null; return dropIncoming(d, t.dataset.incCancelYes, false); }
   if (t.dataset.rolefilter) { S.roleFilter = S.roleFilter === t.dataset.rolefilter ? null : t.dataset.rolefilter; return render(); }
   if (t.dataset.roleedit) { S.roleEdit = S.roleEdit === t.dataset.roleedit ? null : t.dataset.roleedit; return render(); }
   if (t.dataset.roletoggle && d) { const [n, role] = JSON.parse(t.dataset.roletoggle); const c = d.cur.find(x => x.n === n); if (c) { const now = rolesOf(d, c); setRoles(d, n, now.includes(role) ? now.filter(x => x !== role) : [...now, role]); save(d); render(); } return; }
@@ -1554,6 +1628,8 @@ document.addEventListener("click", e => {
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Printed list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
+  if (act === "save-incoming" && d) return saveIncoming(d);
+  if (act === "inc-cancel-no") { S.confirm = null; return render(); }
   if (act === "undo") { S.confirm = "undo"; return render(); }
   if (act === "printall") { S.confirm = "printall"; return render(); }
   if (act === "printall-no" || act === "unprint-no" || act === "binrm-no") { S.confirm = null; return render(); }

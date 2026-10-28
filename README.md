@@ -31,6 +31,10 @@ Every Tuesday GitHub rebuilds the card list from Scryfall and commits it if anyt
 
 Decks store each card's permanent Scryfall ID, so a card that gets renamed keeps working.
 
+## Incoming cards
+
+When cards are on the way (printed, bought or borrowed), stage the swap on the bench and press **Save as incoming** instead of **Save change**. The deck list stays as it is, so it keeps matching what's in the box: outgoing cards show a Leaving tag and the change waits in an Incoming strip above the list. Press **Arrived** when the cards are in hand to apply the swap and mark the new cards printed. A deck can have several incoming changes at once, and an arrival can be undone from History.
+
 ## Bracket and roles
 
 The bracket shown on each deck is the lowest Commander Bracket its cards allow: Game Changers (none in brackets 1–2, up to three in bracket 3), mass land denial (brackets 4–5 only) and extra turns (none in bracket 1). Combos and how fast a deck wins aren't judged, so it's a starting point for the conversation with your table.
