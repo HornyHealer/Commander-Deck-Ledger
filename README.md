@@ -9,6 +9,7 @@ Track Commander decks: every swap, every cut, every card you own, cards on the w
 | Path | What it is |
 | --- | --- |
 | `index.html` | The page shell |
+| `manifest.webmanifest`, `icons/`, `sw.js` | Install-as-an-app details and the offline copy |
 | `css/style.css` | All styling |
 | `js/app.js` | All of the app's code |
 | `js/card-rules.js` | Reads card text for partner rules, copy limits, extra turns, mass land denial and suggested roles; shared by the site and the card-list builder |
@@ -60,6 +61,12 @@ Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text b
 ## Publishing
 
 Every push to `main` runs the automatic tests on GitHub. The site is published to GitHub Pages only if they pass. See `.github/workflows/test-and-deploy.yml`.
+
+## Phones and installing
+
+On phones and narrow windows the swap bench is a bar pinned to the bottom of the screen; tap it to slide the full bench up. Touch screens get bigger, always-visible buttons and no dragging (every drag has a button: the scissors to cut, the arrow to bring a card back).
+
+The site can be installed as an app (`manifest.webmanifest`, `icons/`). The browser offers an **Install as an app** button at the bottom of the page; on iPhone use Share → Add to Home Screen. `sw.js` keeps a copy of the site so it opens without a connection; it always tries the network first, so updates show up right away.
 
 ## Running the tests on your computer
 

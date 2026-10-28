@@ -511,7 +511,7 @@ function saveIncoming(d) {
   const batch = { id: uid(), t: Date.now(), out, in: ins }; if (note) batch.note = note; if (b.kind === "import") batch.kind = "import";
   d.incoming = [...incomingOf(d), batch];
   const e = { id: batch.id, t: batch.t, kind: "incoming", out, in: ins }; if (note) e.note = note; d.log.push(e);
-  d.bench = { out: [], in: [], note: "" }; clearTimeout(benchTimers.get(d.id)); d.updatedAt = Date.now();
+  d.bench = { out: [], in: [], note: "" }; clearTimeout(benchTimers.get(d.id)); d.updatedAt = Date.now(); S.benchOpen = false;
   save(d); render(); toast(`Saved as incoming. The deck list stays as it is until you press Arrived.`);
 }
 function arrive(d, id) {
@@ -675,6 +675,21 @@ async function boot() {
   if (!CLOUD.user && S.view === "deck" && !S.decks.has(S.deckId)) S.view = "library";
   render(); queueLookups(); if (!CLOUD.user) askToKeepData();
 }
+
+// ---------- install as an app ----------
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if (S.ready) safeRender(); });
+window.addEventListener("appinstalled", () => { installEvt = null; if (S.ready) safeRender(); });
+const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function installHtml() {
+  if (isStandalone()) return "";
+  if (installEvt) return `<p class="install"><button class="btn sm" data-act="install">${ICONS.down}Install as an app</button> Opens in its own window from your home screen or desktop.</p>`;
+  if (isIOS) return `<p class="install">Install as an app: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>`;
+  return "";
+}
+// Saves the site for opening without a connection (only on the real https site, not in local tests).
+if ("serviceWorker" in navigator && location.protocol === "https:") window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 
 // ---------- accounts and sync (Firebase) ----------
 // Turned on by js/firebase-config.js. Signed out, the site works from browser storage as before.
@@ -942,7 +957,7 @@ document.addEventListener("focusout", () => { if (pendingRender) setTimeout(() =
 
 // ---------- routing ----------
 function go(view, deckId) {
-  if (deckId !== S.deckId) { S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
+  if (deckId !== S.deckId) { S.benchOpen = false; S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
   S.view = view; S.deckId = deckId || null; S.filter = ""; S.confirm = null;
   try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
   render(); window.scrollTo(0, 0);
@@ -965,7 +980,7 @@ function render() {
   else if (S.view === "deck" && d) html += renderDeck(d);
   else if (S.view === "deck" && S.ready) { S.view = "library"; html += renderLibrary(); }
   else html += renderLibrary();
-  html += `<footer class="site-foot"><p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
+  html += `<footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
   if (S.dialog) renderDialog();
 }
@@ -1392,7 +1407,7 @@ function renderCurrent(d) {
     const g = cmds.includes(c.n) ? "CMD" : typeOf(c.n);
     if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c);
   }
-  let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"} title="Cards you still need to get for incoming changes">Incoming only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div><span class="muted" style="font-size:12px;flex-basis:100%">Drag a card onto <b>Removed</b> or the bench, or use the scissors.</span></div>`;
+  let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"} title="Cards you still need to get for incoming changes">Incoming only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div><span class="muted" style="font-size:12px;flex-basis:100%">${canHover ? "Drag a card onto <b>Removed</b> or the bench, or use the scissors." : "Tap the scissors to cut a card. The swap bench is at the bottom of the screen."}</span></div>`;
   h += renderIncoming(d) + rolesBar(d);
   if (!groups.size) return h + `<p class="muted">${S.roleFilter ? `No cards${S.filter ? ` matching “${esc(S.filter)}”` : ""} have the ${esc(ROLE_NAME[S.roleFilter])} role.` : `No cards match “${esc(S.filter)}”.`}</p>`;
   h += `<div class="groups">`;
@@ -1409,7 +1424,7 @@ function renderCurrent(d) {
       const roles = rolesOf(d, c); const editing = S.roleEdit === c.n;
       const rtags = roles.length ? `<span class="rtags">${roles.map(x => `<span class="rtag">${ROLE_NAME[x] || esc(x)}</span>`).join("")}</span>` : "";
       const redit = editing ? `<span class="roleedit" role="group" aria-label="Roles for ${esc(c.n)}">${ROLES.map(([id, l]) => `<button class="chip sm${roles.includes(id) ? " on" : ""}" aria-pressed="${roles.includes(id)}" data-roletoggle="${esc(JSON.stringify([c.n, id]))}">${ROLE_NAME[id]}</button>`).join("")}${d.roles && d.roles[roleKey(c)] ? `<button class="btn sm ghost" data-rolereset="${esc(c.n)}">Use suggested</button>` : ""}<button class="btn sm" data-act="role-done">Done</button></span>` : "";
-      h += `<div class="row${st ? " staged-out" : ""}${editing ? " editing" : ""}" draggable="true" data-drag="cur" data-name="${esc(c.n)}">
+      h += `<div class="row${st ? " staged-out" : ""}${editing ? " editing" : ""}" ${canHover ? 'draggable="true" ' : ""}data-drag="cur" data-name="${esc(c.n)}">
         <span class="q">${c.q}</span><span class="nm"><span>${cardLink(c.n)}</span>${flags}${rtags}${redit}</span>${r ? pipsFor(r[1]) : "<span></span>"}
         <span class="acts"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button><button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button></span></div>`;
     }
@@ -1426,7 +1441,7 @@ function renderRemoved(d, removed) {
     const repl = e && e.in && e.in.length ? `replaced by ${e.in.map(i => esc(i.n)).join(", ")}` : "";
     const sub = e ? `Cut ${fmtShort(e.t)}${repl ? " · " + repl : ""}` : "Out of the current list";
     const staged = d.bench.in.some(i => i.n === r.n) ? "Coming back" : incomingOf(d).some(b => b.in.some(i => i.n === r.n)) ? "Incoming" : "";
-    return `<div class="row" draggable="true" data-drag="removed" data-name="${esc(r.n)}"><span class="q">${r.q}</span>
+    return `<div class="row" ${canHover ? 'draggable="true" ' : ""}data-drag="removed" data-name="${esc(r.n)}"><span class="q">${r.q}</span>
       <span class="nm"><span>${cardLink(r.n)}</span>${staged ? `<span class="flag ${staged === "Incoming" ? "leaving" : "good"}">${staged}</span>` : ""}${r.printed ? "" : (() => { for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if (e.kind === "unprint" && e.cards.some(c => c.n === r.n)) return e.to ? `<span class="flag plain">Moved to ${esc(e.to.name)}</span>` : '<span class="flag plain">Taken off owned</span>'; } return '<span class="flag plain">Never owned</span>'; })()}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}
       <span class="acts" style="opacity:1"><button class="iconbtn" title="Bring back" aria-label="Bring ${esc(r.n)} back" data-bringback="${esc(r.n)}">${ICONS.back2}</button></span></div>`;
   }).join("")}</div>`;
@@ -1496,13 +1511,15 @@ function renderBench(d) {
   };
   const n = b.out.length + b.in.length;
   const pair = b.out.length && b.in.length ? (b.out.length === b.in.length ? `Saves as ${b.out.length} swap${b.out.length > 1 ? "s" : ""}, matched in order.` : `${b.out.length} out, ${b.in.length} in.`) : b.out.length ? "Cuts only. Add replacements below if you have them." : b.in.length ? "Adds only." : "";
-  return `<aside class="bench" aria-label="Swap bench"><header><h3>Swap bench</h3><p>Stage cuts and adds, then save them as one change.</p></header>
+  const nOut = b.out.reduce((a, x) => a + x.q, 0), nIn = b.in.reduce((a, x) => a + x.q, 0);
+  const bar = `<button class="sheet-bar" data-act="bench-toggle" aria-expanded="${!!S.benchOpen}" aria-controls="bench-body"><span class="sb-t">Swap bench</span><span class="sb-n">${nOut || nIn ? `<b class="out">${nOut} out</b><b class="in">${nIn} in</b>` : "Cut or add cards"}</span><span class="sb-c">${S.benchOpen ? "Close ▾" : "Open ▴"}</span></button>`;
+  return `<aside class="bench${S.benchOpen ? " open" : ""}" aria-label="Swap bench">${bar}<header><h3>Swap bench</h3><p>Stage cuts and adds, then save them as one change.</p></header>
     <div class="zone"><div class="zt"><span class="label out">Taking out</span><span class="mono muted" style="font-size:12px">${b.out.reduce((a, x) => a + x.q, 0)}</span></div>
-      <div class="dropbox" data-drop="out">${b.out.length ? b.out.map(x => row(x, "out")).join("") : '<div class="hint">Drag cards here from the current list</div>'}</div>
+      <div class="dropbox" data-drop="out">${b.out.length ? b.out.map(x => row(x, "out")).join("") : (canHover ? '<div class="hint">Drag cards here from the current list</div>' : '<div class="hint">Tap the scissors on a card, or search below</div>')}</div>
       <div class="search"><input class="field" id="s-out" placeholder="Search this deck to cut…" autocomplete="off" aria-label="Search this deck to cut"><div class="sugg" id="g-out" hidden></div></div>
     </div>
     <div class="zone"><div class="zt"><span class="label in">Putting in</span><span class="mono muted" style="font-size:12px">${b.in.reduce((a, x) => a + x.q, 0)}</span></div>
-      <div class="dropbox" data-drop="in">${b.in.length ? b.in.map(x => row(x, "in")).join("") : '<div class="hint">Drag removed cards here, or search any card</div>'}</div>
+      <div class="dropbox" data-drop="in">${b.in.length ? b.in.map(x => row(x, "in")).join("") : (canHover ? '<div class="hint">Drag removed cards here, or search any card</div>' : '<div class="hint">Bring back a removed card, or search any card</div>')}</div>
       <div class="search"><input class="field" id="s-in" placeholder="Search all cards to add…" autocomplete="off" aria-label="Search all cards to add"><div class="sugg" id="g-in" hidden></div></div>
     </div>
     <div class="foot">
@@ -1561,7 +1578,9 @@ function stage(d, side, n) {
     if (ex) ex.q += 1; else list.push({ n, q: 1 });
   }
   render(); saveSoon(d);
+  if (sheetMode() && !S.benchOpen) toast(`${n} added to the swap bench${side === "out" ? " to cut" : ""}.`);
 }
+const sheetMode = () => window.matchMedia && matchMedia("(max-width: 900px)").matches;
 function unstage(d, side, n) { d.bench[side] = d.bench[side].filter(x => x.n !== n); render(); saveSoon(d); }
 function bumpQty(d, side, n, delta) {
   const x = d.bench[side].find(x => x.n === n); if (!x) return;
@@ -1577,7 +1596,7 @@ function commit(d) {
   const n = d.bench.out.length + d.bench.in.length;
   d.bench = { out: [], in: [], note: "" };
   clearTimeout(benchTimers.get(d.id));
-  save(d); render(); toast(`Saved ${n} card change${n > 1 ? "s" : ""} to history.`);
+  S.benchOpen = false; save(d); render(); toast(`Saved ${n} card change${n > 1 ? "s" : ""} to history.`);
 }
 
 // ---------- clipboard ----------
@@ -1898,6 +1917,8 @@ document.addEventListener("click", e => {
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Owned list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
+  if (act === "bench-toggle") { S.benchOpen = !S.benchOpen; const tt = $(".toast"); if (tt) tt.hidden = true; render(); if (S.benchOpen) { const el = $(".bench.open"); if (el) el.scrollTop = 0; } return; }
+  if (act === "install" && installEvt) { const ev = installEvt; ev.prompt(); ev.userChoice.finally(() => { installEvt = null; render(); }); return; }
   if (act === "save-incoming" && d) return saveIncoming(d);
   if (act === "inc-cancel-no") { S.confirm = null; return render(); }
   if (act === "undo") { S.confirm = "undo"; return render(); }

@@ -358,7 +358,6 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
-  .bench { position: static; order: -1; }
   .dhead { grid-template-columns: 1fr; }
   .dhead .actions { justify-content: flex-start; }
 }
@@ -547,3 +546,33 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .grabbox .grab .icon { width: 11px; height: 11px; }
 .grabbox .grab:hover { background: var(--ink); color: var(--acid); }
 .grabbox .grab:focus-visible, .grabbox .grab-src:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
+
+/* Swap bench: a slide-up panel on phones and narrow windows */
+.sheet-bar { display: none; }
+@media (max-width: 900px) {
+  .layout { padding-bottom: 76px; }
+  .bench { position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 40; max-height: min(86vh, 760px); overflow-y: auto; overscroll-behavior: contain;
+    clip-path: none; outline: 0; border-top: 2px solid var(--rule); box-shadow: 0 -10px 30px rgb(8 8 7 / .22); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .bench:not(.open) > :not(.sheet-bar) { display: none; }
+  .bench header { display: none; }
+  .sheet-bar { display: flex; gap: 10px; align-items: center; width: 100%; position: sticky; top: 0; z-index: 1; border: 0; background: var(--panel); color: var(--panel-ink);
+    padding: 14px 16px; min-height: 56px; text-align: left; cursor: pointer; }
+  .sheet-bar .sb-t { font-family: var(--wide); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--acid); }
+  .sheet-bar .sb-n { flex: 1; display: flex; gap: 10px; font: 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; opacity: .85; }
+  .sheet-bar .sb-n .out { color: var(--hot); font-weight: 500; }
+  .sheet-bar .sb-n .in { color: var(--acid); font-weight: 500; }
+  .sheet-bar .sb-c { font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .sheet-bar:focus-visible { outline: 0; box-shadow: inset 0 0 0 3px var(--acid); }
+  .toast { bottom: calc(86px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* Touch screens: bigger targets, row buttons always shown */
+@media (pointer: coarse) {
+  .iconbtn { padding: 9px; }
+  .row .acts { opacity: 1; }
+  .chip { padding: 7px 11px; }
+  .btn.sm { padding-top: 8px; padding-bottom: 8px; }
+  .bench .qty button { min-width: 32px; min-height: 32px; }
+  .grabbox, .grabbox .grab-src, .grabbox .grab { height: 32px; }
+}
+.site-foot .install { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

@@ -21,6 +21,8 @@ test.beforeEach(async ({ page, context }) => {
 test.afterEach(() => { expect(pageErrors, 'page errors').toEqual([]); });
 
 async function addIn(page, name) {
+  // On a phone the swap bench is a slide-up panel; open it first.
+  if (await page.locator('.sheet-bar').isVisible() && !(await page.locator('.bench.open').count())) await page.click('.sheet-bar');
   await page.fill('#s-in', name);
   await page.locator('#g-in button .nm', { hasText: new RegExp('^' + name + '$') }).click();
 }
