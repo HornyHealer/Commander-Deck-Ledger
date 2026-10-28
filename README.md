@@ -1,5 +1,7 @@
 # Commander Deck Ledger
 
+[![Test and deploy](https://github.com/HornyHealer/Commander-Deck-Ledger/actions/workflows/test-and-deploy.yml/badge.svg)](https://github.com/HornyHealer/Commander-Deck-Ledger/actions/workflows/test-and-deploy.yml)
+
 Track Commander decks: every swap, every cut, every card you've printed, and a bin for spare copies.
 
 ## How the site is organized
