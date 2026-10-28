@@ -115,13 +115,16 @@ async function main() {
   const out = path.join(root, 'data', 'cards.json');
   const json = JSON.stringify(list);
   const before = existsSync(out) ? readFileSync(out, 'utf8') : '';
-  if (before === json) { console.log(`No changes (${list.length} cards).`); return; }
+  if (before === json) { console.log(`::notice title=Card list::No changes (${list.length} cards).`); return; }
   writeFileSync(out, json);
   writeFileSync(path.join(root, 'data', 'cards-meta.json'), JSON.stringify({ source: 'Scryfall Oracle Cards', scryfallUpdated: info.updated_at, built: new Date().toISOString(), count: list.length }, null, 1) + '\n');
   const counts = { banned: list.filter(r => r[4] & FLAG.BANNED).length, gameChangers: list.filter(r => r[4] & FLAG.GAME_CHANGER).length, commanders: list.filter(r => r[4] & FLAG.COMMANDER).length };
   console.log(`Saved ${list.length} cards`, counts);
+  console.log(`::notice title=Card list::Saved ${list.length} cards from Scryfall (${counts.banned} banned, ${counts.gameChangers} Game Changers, ${counts.commanders} possible commanders).`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(err => { console.error(err); process.exit(1); });
+  // "::error::" and "::notice::" lines show up as annotations on the GitHub run.
+  const oneLine = s => String(s).replace(/\r?\n/g, ' ').slice(0, 900);
+  main().catch(err => { console.error(err); console.log(`::error title=Card list build failed::${oneLine(err && err.stack || err)}`); process.exit(1); });
 }
