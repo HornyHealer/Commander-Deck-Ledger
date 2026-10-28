@@ -1,0 +1,12 @@
+{
+  "name": "commander-deck-ledger",
+  "private": true,
+  "description": "Track Commander decks: swaps, printed cards, and a bin for spare copies.",
+  "scripts": {
+    "serve": "python3 -m http.server 4173 --bind 127.0.0.1",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
