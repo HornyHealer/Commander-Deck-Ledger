@@ -41,13 +41,15 @@ In the saved data the owned list is still stored as `printed`, so older backups 
 
 ## Check a list
 
-**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "From your check" section has one row of buttons per group:
+**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "From your check" section has one row of buttons per group, always in the order Swap decks, Incoming, Owned (where they apply), and every group starts on **Incoming**:
 
-| Group | Choices | Default |
-| --- | --- | --- |
-| In the card bin | **Owned** (taken out of the bin) or **Incoming** | Owned |
-| In other decks | **Swap decks** (moved out of that deck, logged in both decks' history and undoable from either), **Owned** (the other deck keeps it too) or **Incoming** | Swap decks |
-| Not owned | **Incoming** or **Owned** | Incoming |
+| Group | Choices |
+| --- | --- |
+| In the card bin | **Incoming** (wait for another copy) or **Owned** (taken out of the bin) |
+| In other decks | **Swap decks** (moved out of that deck, logged in both decks' history and undoable from either), **Incoming** or **Owned** (the other deck keeps it too) |
+| Not owned | **Incoming** or **Owned** |
+
+Each row's cards are behind a **Show cards** toggle. With Swap decks chosen, a card that's in more than one of your decks gets a picker for which deck it comes from.
 
 ## Bracket and roles
 

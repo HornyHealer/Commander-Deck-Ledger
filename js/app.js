@@ -1637,19 +1637,24 @@ function baPick(i) {
 // bin: owned (taken out of the bin) or incoming; decks: swap (moved from that deck), owned or incoming;
 // need: incoming or owned.
 const RULE_OPTS = {
-  bin: { title: "In the card bin", opts: [["owned", "Owned", "Taken out of the bin and into this deck"], ["incoming", "Incoming", "Wait for another copy"]] },
-  decks: { title: "In other decks", opts: [["swap", "Swap decks", "Moved out of the other deck; undo from either deck"], ["owned", "Owned", "Counted as owned here too; the other deck keeps it"], ["incoming", "Incoming", "Wait for another copy"]] },
-  need: { title: "Not owned", opts: [["incoming", "Incoming", "Kept out of the deck until it arrives"], ["owned", "Owned", "You have it already; add it as owned"]] },
+  bin: { title: "In the card bin", opts: [["incoming", "Incoming", "Wait for another copy; the bin keeps its copy"], ["owned", "Owned", "Taken out of the bin and into this deck"]] },
+  decks: { title: "In other decks", opts: [["swap", "Swap decks", "Moved out of the other deck; undo from either deck"], ["incoming", "Incoming", "Wait for another copy; the other deck keeps its copy"], ["owned", "Owned", "Counted as owned here too; the other deck keeps it"]] },
+  need: { title: "Not owned", opts: [["incoming", "Incoming", "Kept out of the deck until it arrives"], ["owned", "Owned", "You have it already; added as owned"]] },
 };
-function planFromCheck(cards, rules) {
+const RULE_DEFAULTS = () => ({ bin: "incoming", decks: "incoming", need: "incoming" });
+// src: { cardName: deckId } picks which deck a card comes from when it's in more than one.
+function planFromCheck(cards, rules, src = {}) {
   const plan = { wait: [], steal: [], bin: [], groups: { bin: [], decks: [], need: [] } };
   for (const r of collectionCheck(cards)) {
     if (r.basic) continue;
-    if (r.fromBin) { plan.groups.bin.push({ n: r.n, q: r.fromBin }); (rules.bin === "incoming" ? plan.wait : plan.bin).push({ n: r.n, q: r.fromBin }); }
+    if (r.fromBin) { plan.groups.bin.push({ n: r.n, q: r.fromBin }); (rules.bin === "owned" ? plan.bin : plan.wait).push({ n: r.n, q: r.fromBin }); }
     if (r.fromDecks) {
-      let left = r.fromDecks;
-      for (const x of r.decks) { if (!left) break; const q = Math.min(x.q, left); left -= q; plan.groups.decks.push({ n: r.n, q, id: x.id, name: x.name }); if (rules.decks === "swap") plan.steal.push({ n: r.n, q, id: x.id, name: x.name }); }
-      if (rules.decks === "incoming") plan.wait.push({ n: r.n, q: r.fromDecks });
+      const pick = src[r.n]; const decks = [...r.decks].sort((a, b) => (b.id === pick) - (a.id === pick));
+      const from = []; let left = r.fromDecks;
+      for (const x of decks) { if (!left) break; const q = Math.min(x.q, left); left -= q; from.push({ n: r.n, q, id: x.id, name: x.name }); }
+      plan.groups.decks.push({ n: r.n, q: r.fromDecks, decks: r.decks, from });
+      if (rules.decks === "swap") plan.steal.push(...from);
+      else if (rules.decks !== "owned") plan.wait.push({ n: r.n, q: r.fromDecks });
     }
     if (r.need) { plan.groups.need.push({ n: r.n, q: r.need }); if (rules.need !== "owned") plan.wait.push({ n: r.n, q: r.need }); }
   }
@@ -1657,11 +1662,24 @@ function planFromCheck(cards, rules) {
 }
 function renderRules() {
   const el = $("#n-rules"); const dl = S.dialog; if (!el || !dl || !dl.fromCheck) return;
-  const plan = planFromCheck((dl.parsed || { cards: [] }).cards, dl.rules); dl.plan = plan;
-  const names = (arr, g) => { const shown = arr.slice(0, 5).map(x => `${x.q > 1 ? x.q + "x " : ""}${esc(x.n)}${g === "decks" ? ` <span class="from">from ${esc(x.name)}</span>` : ""}`); return shown.join(", ") + (arr.length > 5 ? `, +${arr.length - 5} more` : ""); };
+  dl.open = dl.open || {}; dl.src = dl.src || {};
+  const plan = planFromCheck((dl.parsed || { cards: [] }).cards, dl.rules, dl.src); dl.plan = plan;
+  const cardList = (g, arr) => `<ul class="rule-list">${arr.map(x => {
+    let right = "";
+    if (g === "decks" && dl.rules.decks !== "swap") right = `<span class="src">In ${x.decks.map(dk => esc(dk.name)).join(", ")}</span>`;
+    else if (g === "decks") {
+      right = x.decks.length > 1
+        ? `<label class="src"><span>From</span><select class="field src-pick" data-card="${esc(x.n)}" aria-label="Which deck ${esc(x.n)} comes from">${x.decks.map(dk => `<option value="${esc(dk.id)}" ${x.from[0] && x.from[0].id === dk.id ? "selected" : ""}>${esc(dk.name)}${dk.q > 1 ? ` (${dk.q})` : ""}</option>`).join("")}</select></label>`
+        : `<span class="src">From ${esc(x.decks[0].name)}</span>`;
+    }
+    return `<li><span class="q mono">${x.q}</span><span class="rn">${esc(x.n)}</span>${right}</li>`;
+  }).join("")}</ul>`;
   const rows = Object.entries(RULE_OPTS).filter(([g]) => plan.groups[g].length).map(([g, o]) => {
-    const cur = dl.rules[g]; const n = qsum(plan.groups[g]); const tip = (o.opts.find(x => x[0] === cur) || [])[2] || "";
-    return `<div class="rule"><div class="rule-head"><span class="rule-t">${o.title}<b class="mono">${n}</b></span><div class="chips seg" role="group" aria-label="${o.title}">${o.opts.map(([v, l]) => `<button type="button" class="chip${cur === v ? " on" : ""}" aria-pressed="${cur === v}" data-rule="${g}|${v}">${l}</button>`).join("")}</div></div><div class="rule-cards">${names(plan.groups[g], g)}<span class="rule-tip"> · ${tip}</span></div></div>`;
+    const cur = dl.rules[g]; const arr = plan.groups[g]; const n = qsum(arr); const tip = (o.opts.find(x => x[0] === cur) || [])[2] || "";
+    const multi = g === "decks" && cur === "swap" ? arr.filter(x => x.decks.length > 1).length : 0; const open = !!dl.open[g];
+    return `<div class="rule"><div class="rule-head"><span class="rule-t">${o.title}<b class="mono">${n}</b></span><div class="chips seg" role="group" aria-label="${o.title}">${o.opts.map(([v, l]) => `<button type="button" class="chip${cur === v ? " on" : ""}" aria-pressed="${cur === v}" data-rule="${g}|${v}">${l}</button>`).join("")}</div></div>
+      <div class="rule-sub"><button type="button" class="rule-toggle" data-rule-open="${g}" aria-expanded="${open}">${open ? "Hide" : "Show"} ${arr.length} card${arr.length === 1 ? "" : "s"} ${open ? "▴" : "▾"}</button><span class="rule-tip">${tip}</span>${multi ? `<span class="rule-multi">${multi} in more than one deck${open ? "" : ", pick which"}</span>` : ""}</div>
+      ${open ? cardList(g, arr) : ""}</div>`;
   });
   el.innerHTML = rows.length ? rows.join("") : `<p class="muted" style="margin:4px 0 0;font-size:13px">Every card in this list is a basic land, so there's nothing to sort.</p>`;
 }
@@ -1712,6 +1730,7 @@ document.addEventListener("click", e => {
   if (t.dataset.allchip) { S.allChip = t.dataset.allchip; return render(); }
   if (t.dataset.pf) { S.printedFilter = t.dataset.pf; return render(); }
   if (t.dataset.cut && d) return stage(d, "out", t.dataset.cut);
+  if (t.dataset.ruleOpen && S.dialog && S.dialog.rules) { const g = t.dataset.ruleOpen; S.dialog.open = S.dialog.open || {}; S.dialog.open[g] = !S.dialog.open[g]; return renderRules(); }
   if (t.dataset.rule && S.dialog && S.dialog.rules) { const [g, v] = t.dataset.rule.split("|"); S.dialog.rules[g] = v; return renderRules(); }
   if (t.dataset.arrive && d) return arrive(d, t.dataset.arrive);
   if (t.dataset.incCopy && d) { const b = incomingOf(d).find(x => x.id === t.dataset.incCopy); if (b) copyText(toGet(d, b).filter(x => x.q > 0).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming list"); return; }
@@ -1772,7 +1791,7 @@ document.addEventListener("click", e => {
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
-  if (act === "chk-create") return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, fromCheck: true, rules: { bin: "owned", decks: "swap", need: "incoming" } });
+  if (act === "chk-create") return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, fromCheck: true, rules: RULE_DEFAULTS() });
 
   if (act === "facet-clear") { S.allTypes = new Set(); S.allColors = new Set(); return render(); }
   if (act === "copy-all") { if ($(".menu")) render(); return copyText((S.allShown || []).filter(x => x.q > 0).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Card list"); }
@@ -1802,7 +1821,7 @@ document.addEventListener("click", e => {
     if (!p.cards.length) { toast("Paste a list first, one card per line."); return; }
     const cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value);
     const name = ($("#n-name").value || "").trim();
-    const plan = S.dialog.fromCheck ? planFromCheck(p.cards, S.dialog.rules) : null;
+    const plan = S.dialog.fromCheck ? planFromCheck(p.cards, S.dialog.rules, S.dialog.src) : null;
     const wait = plan ? plan.wait : parseList(($("#n-wait") || {}).value || "").cards;
     const steal = plan ? plan.steal : [];
     const left = new Map(p.cards.map(c => [c.n, c.q])); for (const w of [...wait, ...steal]) { const v = (left.get(w.n) || 0) - w.q; if (v > 0) left.set(w.n, v); else left.delete(w.n); }
@@ -1857,6 +1876,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "e-artcard" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); if (e.target.value === "__none") dd.artOff = true; else { dd.artOff = false; dd.artCard = e.target.value; } save(dd); render(); renderDialog(); return; }
   if (e.target.id === "e-artpos" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); dd.artPos = e.target.value; save(dd); render(); renderDialog(); return; }
   if (e.target.id === "del-keep" && S.dialog) S.dialog.keep = e.target.checked;
+  if (e.target.classList && e.target.classList.contains("src-pick") && S.dialog) { S.dialog.src = S.dialog.src || {}; S.dialog.src[e.target.dataset.card] = e.target.value; return renderRules(); }
   if ((e.target.id === "cmp-a" || e.target.id === "cmp-b") && S.cmp) { S.cmp[e.target.id.slice(4)] = e.target.value; const id = e.target.id; render(); const el = $("#" + id); if (el) el.focus(); return; }
   if (e.target.id === "h-date") S.histDate = e.target.value;
   if (e.target.name === "n-cmd" && S.dialog) { S.dialog.cmdTouched = true; S.dialog.cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value); }

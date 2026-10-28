@@ -512,5 +512,15 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .rule-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .rule-t { font-family: var(--wide); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; display: inline-flex; gap: 8px; align-items: baseline; }
 .rule-t b { font-size: 12px; }
-.rule-cards { font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
-.rule-cards .from, .rule-tip { color: var(--muted); }
+.rule-sub { display: flex; gap: 6px 12px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
+.rule-toggle { border: 0; background: none; padding: 0; font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.rule-toggle:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
+.rule-tip { color: var(--muted); }
+.rule-multi { color: var(--warn); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.rule-list { list-style: none; margin: 2px 0 0; padding: 0; display: grid; }
+.rule-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px dotted var(--line); font-size: 13px; }
+.rule-list .q { color: var(--muted); font-size: 11px; text-align: right; }
+.rule-list .rn { overflow-wrap: anywhere; }
+.rule-list .src { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.rule-list .src .field { padding: 4px 6px; font-size: 12px; max-width: 180px; }
+.rule .seg .chip { margin-right: -1px; }

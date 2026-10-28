@@ -56,10 +56,11 @@ test('creates a deck from the checked list, taking bin cards and waiting on the 
   await page.click('[data-act="check"]');
   await page.fill('#chk-list', LIST);
   await page.click('[data-act="chk-create"]');
-  // Defaults: bin cards owned, not-owned cards incoming. Other-deck cards stay put (Owned) in this test.
+  // Every group starts as Incoming. Here bin cards come out of the bin; other-deck cards stay put (Owned).
   await expect(page.locator('#n-wait')).toHaveCount(0);
-  await expect(page.locator('[data-rule="bin|owned"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-rule="need|incoming"]')).toHaveAttribute('aria-pressed', 'true');
+  for (const g of ['bin', 'decks', 'need']) await expect(page.locator(`[data-rule="${g}|incoming"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.rule', { hasText: 'In other decks' }).locator('.seg .chip')).toHaveText(['Swap decks', 'Incoming', 'Owned']);
+  await page.click('[data-rule="bin|owned"]');
   await page.click('[data-rule="decks|owned"]');
   await page.fill('#n-name', 'Goblin Time');
   await page.click('[data-dlg="create"]');
@@ -79,8 +80,9 @@ async function createTaking(page) {
   await page.click('[data-act="check"]');
   await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Lightning Bolt\n1 Rhystic Study');
   await page.click('[data-act="chk-create"]');
-  await expect(page.locator('[data-rule="decks|swap"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.rule', { hasText: 'In other decks' })).toContainText('Lightning Bolt from Fixture Zagras');
+  await page.click('[data-rule="decks|swap"]');
+  await page.click('[data-rule-open="decks"]');
+  await expect(page.locator('.rule-list li', { hasText: 'Lightning Bolt' })).toContainText('From Fixture Zagras');
   await page.fill('#n-name', 'Goblin Time');
   await page.click('[data-dlg="create"]');
   await expect(page.locator('.dhead .dn')).toContainText('Goblin Time');
@@ -146,11 +148,9 @@ test('the rule buttons decide where each group goes', async ({ page }) => {
   await page.click('[data-act="check"]');
   await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Arcane Signet\n1 Lightning Bolt\n1 Rhystic Study');
   await page.click('[data-act="chk-create"]');
-  // Bin card waits as incoming instead; other-deck card waits too; the not-owned card is already owned.
-  await page.click('[data-rule="bin|incoming"]');
-  await page.click('[data-rule="decks|incoming"]');
+  // Bin and other-deck cards wait as incoming (the default); the not-owned card is already owned.
   await page.click('[data-rule="need|owned"]');
-  await expect(page.locator('.rule', { hasText: 'Not owned' })).toContainText('add it as owned');
+  await expect(page.locator('.rule', { hasText: 'Not owned' })).toContainText('added as owned');
   await page.fill('#n-name', 'Rules Test');
   await page.click('[data-dlg="create"]');
   const inc = page.locator('.inc');
@@ -164,4 +164,27 @@ test('the rule buttons decide where each group goes', async ({ page }) => {
   await expect(page.locator('.bin .row', { hasText: 'Arcane Signet' })).toContainText('2');
   await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
   await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+});
+
+test('a card in more than one deck can be taken from the deck you pick', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Sol Ring');
+  await page.click('[data-act="chk-create"]');
+  await page.click('[data-rule="decks|swap"]');
+  const row = page.locator('.rule', { hasText: 'In other decks' });
+  await expect(row.locator('.rule-multi')).toContainText('1 in more than one deck');
+  await page.click('[data-rule-open="decks"]');
+  await row.locator('select.src-pick').selectOption({ label: 'Rat Pack' });
+  await page.fill('#n-name', 'Pick Test');
+  await page.click('[data-dlg="create"]');
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('Took 1 card from Rat Pack');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(0);
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
 });
