@@ -61,3 +61,11 @@ test('finds the download link in old and new Scryfall responses', async ({}, inf
   expect(m.findDownloadUrl({ object: 'bulk_data', uri: 'https://api.scryfall.com/bulk-data/abc', files: [{ url: 'https://data.scryfall.io/oracle-cards/x.json.gz' }, { url: 'https://data.scryfall.io/oracle-cards/x.json' }] })).toBe('https://data.scryfall.io/oracle-cards/x.json');
   expect(m.findDownloadUrl({ object: 'bulk_data', uri: 'https://api.scryfall.com/bulk-data/abc' })).toBe('');
 });
+
+test('reads Scryfall files as a JSON array or JSON Lines', async ({}, info) => {
+  test.skip(info.project.name !== 'desktop');
+  expect(m.findDownloadUrl({ jsonl_download_uri: 'https://data.scryfall.io/oracle-cards/x.jsonl.gz' })).toBe('https://data.scryfall.io/oracle-cards/x.jsonl.gz');
+  const a = m.parseCards(JSON.stringify(sample));
+  const b = m.parseCards(sample.map(c => JSON.stringify(c)).join('\n') + '\n');
+  expect(b).toEqual(a);
+});

@@ -105,14 +105,22 @@ export function sanityCheck(list) {
 export function findDownloadUrl(info) {
   if (!info || typeof info !== 'object') return '';
   if (typeof info.download_uri === 'string') return info.download_uri;
+  if (typeof info.jsonl_download_uri === 'string') return info.jsonl_download_uri;
   const found = [];
   const walk = v => {
-    if (typeof v === 'string') { if (/^https:\/\/[^\s]+\.json(\.gz)?(\?.*)?$/i.test(v) && !/api\.scryfall\.com\/bulk-data/i.test(v)) found.push(v); }
+    if (typeof v === 'string') { if (/^https:\/\/[^\s]+\.jsonl?(\.gz)?(\?.*)?$/i.test(v) && !/api\.scryfall\.com\/bulk-data/i.test(v)) found.push(v); }
     else if (Array.isArray(v)) v.forEach(walk);
     else if (v && typeof v === 'object') Object.values(v).forEach(walk);
   };
   walk(info);
   return found.find(u => !/\.gz(\?|$)/i.test(u)) || found[0] || '';
+}
+
+// Accepts a JSON array or JSON Lines (one card object per line).
+export function parseCards(text) {
+  const s = text.trimStart();
+  if (s.startsWith('[')) return JSON.parse(s);
+  return s.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
 }
 
 const HEADERS = { 'User-Agent': 'CommanderDeckLedger/1.0 (+https://github.com/HornyHealer/Commander-Deck-Ledger)', Accept: 'application/json' };
@@ -127,8 +135,8 @@ async function main() {
   if (!res.ok) throw new Error('Download failed: HTTP ' + res.status);
   let buf = Buffer.from(await res.arrayBuffer());
   if (buf[0] === 0x1f && buf[1] === 0x8b) buf = gunzipSync(buf); // compressed file
-  const cards = JSON.parse(buf.toString('utf8'));
-  if (!Array.isArray(cards)) throw new Error('Expected a list of cards, got: ' + JSON.stringify(cards).slice(0, 300));
+  const cards = parseCards(buf.toString('utf8'));
+  console.log(`Read ${cards.length} Scryfall entries`);
   const list = transform(cards);
   const problems = sanityCheck(list);
   if (problems.length) throw new Error('Card list looks wrong, not saving it: ' + problems.join('; '));
