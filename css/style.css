@@ -487,3 +487,20 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .fhint { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
 .dialog textarea.field.short { min-height: 72px; height: 72px; font: 13px/1.5 var(--body); }
 .dialog #n-wait.field.short { font: 12px/1.6 var(--mono); }
+
+/* Check a list */
+.check-grid { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.check-input { position: sticky; top: 12px; display: grid; gap: 8px; }
+.check-input .f { display: grid; gap: 6px; }
+#chk-list { min-height: 420px; width: 100%; resize: vertical; font: 12px/1.6 var(--mono); }
+.check-hint { margin: 0; font-size: 12px; }
+.check-acts { display: flex; gap: 6px; flex-wrap: wrap; margin: -8px 0 16px; }
+.check-acts .btn .mono { margin-left: 6px; }
+.check-groups { columns: 1; }
+.check-groups .group .check-hint { margin: 6px 0; }
+.chk-need h3 { color: var(--warn); }
+@media (max-width: 900px) {
+  .check-grid { grid-template-columns: 1fr; }
+  .check-input { position: static; }
+  #chk-list { min-height: 200px; }
+}

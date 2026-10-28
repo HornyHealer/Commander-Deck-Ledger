@@ -39,6 +39,10 @@ Every card in a deck's list counts as owned, however you got it (printed, bought
 
 In the saved data the owned list is still stored as `printed`, so older backups and synced decks keep working.
 
+## Check a list
+
+**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it: the cards you need to get start as an incoming change, and cards found in the card bin can move out of the bin into the new deck.
+
 ## Bracket and roles
 
 The bracket shown on each deck is the lowest Commander Bracket its cards allow: Game Changers (none in brackets 1–2, up to three in bracket 3), mass land denial (brackets 4–5 only) and extra turns (none in bracket 1). Combos and how fast a deck wins aren't judged, so it's a starting point for the conversation with your table.

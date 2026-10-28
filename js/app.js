@@ -222,28 +222,88 @@ function binRows() {
   for (const d of S.decks.values()) for (const b of incomingOf(d)) for (const x of b.in) if (map.has(x.n)) { const r = map.get(x.n); (r.inc || (r.inc = [])).push(d.name); }
   return [...map.values()].sort((a, b) => a.n.localeCompare(b.n));
 }
-function moveFromBin(n, targetId) {
-  const target = S.decks.get(targetId); if (!target) return 0;
-  const r = binRows().find(x => x.n === n); if (!r) return 0;
-  const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0;
-  let left = Math.min(need, r.total); const moved = left; if (!moved) return 0;
-  const froms = []; const fromLoose = [];
+// Takes up to `want` copies of a card out of the card bin for a deck: loose bin cards are removed and spares
+// owned by other decks come off those decks' owned lists. Returns what was taken and where from.
+function pullFromBin(n, want, target) {
+  const r = binRows().find(x => x.n === n); const froms = []; const fromLoose = [];
+  if (!r) return { got: 0, froms, fromLoose };
+  let left = Math.min(want, r.total); const moved = left;
   for (const s of r.srcs) {
-    if (!left) break; if (s.id === targetId) continue;
+    if (!left) break; if (s.id === target.id) continue;
     if (s.loose) {
       let take = Math.min(s.q, left); const got0 = take;
       for (const c of S.loose.cards) { if (!take) break; if (c.n !== n || looseLabel(c) !== s.name) continue; const k = Math.min(c.q, take); c.q -= k; take -= k; fromLoose.push({ n, q: k, from: c.from || "" }); }
       S.loose.cards = S.loose.cards.filter(c => c.q > 0);
-      froms.push(s.name); left -= got0; saveLoose(); continue;
+      froms.push(s.name); left -= got0 - take; saveLoose(); continue;
     }
     const src = S.decks.get(s.id); const take = Math.min(s.q, left);
     unprintCards(src, [{ n, q: take }], { id: target.id, name: target.name });
     froms.push(src.name); left -= take; save(src);
   }
-  const got = moved - left; if (!got) return 0;
+  return { got: moved - left, froms, fromLoose };
+}
+function moveFromBin(n, targetId) {
+  const target = S.decks.get(targetId); if (!target) return 0;
+  const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0; if (!need) return 0;
+  const { got, froms, fromLoose } = pullFromBin(n, need, target); if (!got) return 0;
   printCards(target, [{ n, q: got }], fromLoose.length ? { names: froms, loose: fromLoose } : { names: froms });
   save(target); return got;
 }
+// ---------- collection check: which cards of a pasted list you already own ----------
+function collectionCheck(cards) {
+  const bin = new Map(binRows().map(r => [r.n, r]));
+  const inDecks = new Map(); const incoming = new Map();
+  for (const d of S.decks.values()) {
+    for (const c of d.cur) { if (!inDecks.has(c.n)) inDecks.set(c.n, []); inDecks.get(c.n).push({ id: d.id, name: d.name, q: c.q }); }
+    for (const u of incomingNeeds(d)) { if (!incoming.has(u.n)) incoming.set(u.n, []); incoming.get(u.n).push(d.name); }
+  }
+  return cards.map(c => {
+    if (isBasic(c.n)) return { n: c.n, q: c.q, basic: true };
+    const b = bin.get(c.n); const fromBin = Math.min(c.q, b ? b.total : 0);
+    const decks = inDecks.get(c.n) || []; const fromDecks = Math.min(c.q - fromBin, decks.reduce((a, x) => a + x.q, 0));
+    return { n: c.n, q: c.q, fromBin, fromDecks, need: c.q - fromBin - fromDecks, decks, binFrom: b ? b.srcs.map(x => x.name) : [], binInc: b && b.inc, incoming: incoming.get(c.n) || [] };
+  });
+}
+let CHECK_TEXT = ""; try { CHECK_TEXT = localStorage.getItem("cdl-check-text") || ""; } catch {}
+function renderCheck() {
+  return `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
+  <div class="dhead"><div><div class="eyebrow"><span class="label">Collection</span></div><h2>Check a list</h2><div class="dn">Paste any deck list to see which cards you already own</div></div></div>
+  <div class="check-grid"><div class="check-input"><label class="f"><span class="label">Deck list</span><textarea class="field" id="chk-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(CHECK_TEXT)}</textarea></label>
+    <p class="muted check-hint">Paste it the same way you'd import into Archidekt, one card per line. Cards are matched against your card bin first, then the decks you own them in.</p></div>
+    <div id="chk-results" aria-live="polite">${checkResults()}</div></div>`;
+}
+function checkResults() {
+  const p = parseList(CHECK_TEXT); S.checkParsed = p;
+  if (!p.cards.length) return `<div class="empty"><h2>Nothing to check yet</h2><p>Paste a list on the left and each card is sorted into what's free in your card bin, what's owned in another deck, and what you'd need to get.</p></div>`;
+  const rows = collectionCheck(p.cards); S.checkRows = rows;
+  const tot = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  const basics = rows.filter(r => r.basic); const nBasic = qsum(basics);
+  const nBin = tot("fromBin"), nDeck = tot("fromDecks"), nNeed = tot("need"), all = qsum(rows);
+  const list = (arr, fn) => arr.length ? arr.sort((a, b) => a.n.localeCompare(b.n)).map(fn).join("") : "";
+  const rc = r => { const x = rec(r.n); return x ? pipsFor(x[1]) : "<span></span>"; };
+  const line = (r, q, sub, flags = "") => `<div class="row"><span class="q">${q}</span><span class="nm"><span>${esc(r.n)}</span>${flags}${sub ? `<small>${sub}</small>` : ""}</span>${rc(r)}<span class="acts"><a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+  const binL = list(rows.filter(r => r.fromBin), r => line(r, r.fromBin, [...new Set(r.binFrom)].map(x => x === "Added directly" ? "Added to the bin" : "Spare from " + esc(x)).join(" · "), r.binInc ? `<span class="flag leaving">Incoming for ${esc([...new Set(r.binInc)].join(", "))}</span>` : ""));
+  const deckL = list(rows.filter(r => r.fromDecks), r => line(r, r.fromDecks, "In " + r.decks.map(x => esc(x.name) + (x.q > 1 ? ` ×${x.q}` : "")).join(", ")));
+  const needL = list(rows.filter(r => r.need), r => line(r, r.need, r.incoming.length ? "Already incoming for " + r.incoming.map(esc).join(", ") : "", !rec(r.n) ? '<span class="flag warn">Unrecognized</span>' : ""));
+  const grp = (id, title, n, body, extra = "") => body ? `<div class="group chk-${id}"><h3>${title}<span class="mono">${n}</span></h3>${extra}${body}</div>` : "";
+  return `<div class="summary">
+      <div class="k"><span class="label">In list</span><span class="v">${all}</span></div>
+      <div class="k"><span class="label">In card bin</span><span class="v ${nBin ? "ok" : ""}">${nBin}</span></div>
+      <div class="k"><span class="label">In other decks</span><span class="v">${nDeck}</span></div>
+      <div class="k"><span class="label">Need to get</span><span class="v ${nNeed ? "warn" : "ok"}">${nNeed}</span></div>
+      ${nBasic ? `<div class="k"><span class="label">Basic lands</span><span class="v">${nBasic}</span></div>` : ""}
+    </div>
+    <div class="check-acts"><button class="btn sm" data-act="chk-copy-need" ${nNeed ? "" : "disabled"}>${ICONS.copy}Copy need to get<span class="mono muted">${nNeed}</span></button><button class="btn sm" data-act="chk-copy-owned" ${nBin + nDeck ? "" : "disabled"}>${ICONS.copy}Copy owned<span class="mono muted">${nBin + nDeck}</span></button><button class="btn sm primary" data-act="chk-create">${ICONS.plus}Create deck from this list</button></div>
+    ${p.unknown.length ? `<p class="muted check-hint">${p.unknown.length} card${p.unknown.length > 1 ? "s weren't" : " wasn't"} recognized and ${p.unknown.length > 1 ? "are" : "is"} counted as need to get: ${p.unknown.slice(0, 8).map(esc).join(", ")}${p.unknown.length > 8 ? "…" : ""}</p>` : ""}
+    <div class="groups check-groups">
+      ${grp("need", "Need to get", nNeed, needL)}
+      ${grp("bin", "Free in the card bin", nBin, binL)}
+      ${grp("decks", "Owned in another deck", nDeck, deckL, `<p class="muted check-hint">Using these means cutting them from that deck first.</p>`)}
+      ${nBasic ? `<div class="group"><h3>Basic lands<span class="mono">${nBasic}</span></h3><p class="muted check-hint">Not checked: ${basics.map(r => `${r.q} ${esc(r.n)}`).join(", ")}.</p></div>` : ""}
+    </div>`;
+}
+function updateCheck() { const el = $("#chk-results"); if (el) el.innerHTML = checkResults(); }
+
 function lastOut(d, n) {
   for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if ((e.out || []).some(o => o.n === n)) return e; }
   return null;
@@ -772,16 +832,16 @@ document.addEventListener("focusout", () => { if (pendingRender) setTimeout(() =
 function go(view, deckId) {
   if (deckId !== S.deckId) { S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
   S.view = view; S.deckId = deckId || null; S.filter = ""; S.confirm = null;
-  try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "all" ? "#all-cards" : location.pathname + location.search); } catch {}
+  try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
   render(); window.scrollTo(0, 0);
 }
-function fromHash() { if (location.hash === "#all-cards") { S.view = "all"; return; } const m = (location.hash || "").match(/^#deck-([A-Za-z0-9_-]+)$/); if (m) { S.view = "deck"; S.deckId = m[1]; } }
+function fromHash() { if (location.hash === "#all-cards") { S.view = "all"; return; } if (location.hash === "#check") { S.view = "check"; return; } const m = (location.hash || "").match(/^#deck-([A-Za-z0-9_-]+)$/); if (m) { S.view = "deck"; S.deckId = m[1]; } }
 
 // ---------- render ----------
 function render() {
   const app = $("#app");
   let html = `<div class="top"><div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>`;
-  html += `<div class="topacts">${accountHtml()}<button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
+  html += `<div class="topacts">${accountHtml()}<button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button><button class="btn${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}Check a list</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
   if (CLOUD.enabled && CLOUD.authReady && !CLOUD.user && !CLOUD.failed && S.view === "library") html += `<div class="signin-note"><div><b>Sync your decks</b> Sign in with Google to keep your decks in step between your phone and computer.${S.decks.size || (S.loose.cards || []).length ? " The decks saved in this browser move into your account the first time you sign in." : ""}</div><button class="btn primary" data-act="signin">${ICONS.user}Sign in with Google</button></div>`;
@@ -789,6 +849,7 @@ function render() {
   const d = S.deckId && S.decks.get(S.deckId);
   if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
+  else if (S.view === "check") html += renderCheck();
   else if (S.view === "deck" && d) html += renderDeck(d);
   else if (S.view === "deck" && S.ready) { S.view = "library"; html += renderLibrary(); }
   else html += renderLibrary();
@@ -1427,6 +1488,7 @@ function renderDialog() {
       <label class="f"><span class="label">Deck list</span><textarea class="field" id="n-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(dl.text || "")}</textarea></label>
       <div id="n-parse"></div>
       <label class="f"><span class="label">Still waiting on (optional)</span><textarea class="field short" id="n-wait" placeholder="1 Rhystic Study&#10;1 Smothering Tithe">${esc(dl.wait || "")}</textarea><span class="fhint">Cards from the list you don't have yet, one per line. They're kept out of the deck as an incoming change until they arrive.</span></label>
+      ${dl.fromCheck && dl.fromCheck.bin.length ? `<label class="checkline"><input type="checkbox" id="n-takebin" ${dl.takeBin === false ? "" : "checked"}> Take the ${qsum(dl.fromCheck.bin)} card${qsum(dl.fromCheck.bin) > 1 ? "s" : ""} found in the card bin out of the bin and into this deck</label>` : ""}
     </div>
     <footer><span class="grow">The cards you have are saved as the deck's original list.</span><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="create">Create deck</button></footer></div>`;
   } else if (dl.kind === "edit") {
@@ -1641,6 +1703,13 @@ document.addEventListener("click", e => {
     return;
   }
   if (act === "all") { S.allFilter = ""; return go("all"); }
+  if (act === "check") return go("check");
+  if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
+  if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
+  if (act === "chk-create") {
+    const rows = S.checkRows || []; const need = rows.filter(r => r.need); const bin = rows.filter(r => r.fromBin);
+    return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, wait: need.map(r => `${r.need}x ${r.n}`).join("\n"), fromCheck: { bin: bin.map(r => ({ n: r.n, q: r.fromBin })) }, takeBin: true });
+  }
   if (act === "facet-clear") { S.allTypes = new Set(); S.allColors = new Set(); return render(); }
   if (act === "copy-all") { if ($(".menu")) render(); return copyText((S.allShown || []).filter(x => x.q > 0).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Card list"); }
   if (act === "copy-all-unp") { if ($(".menu")) render(); return copyText((S.allUnprinted || []).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming cards"); }
@@ -1675,7 +1744,12 @@ document.addEventListener("click", e => {
     if (wait.length) { const now = Date.now() + 1, id = uid(); deck.incoming = [{ id, t: now, out: [], in: wait }]; deck.log.push({ id, t: now, kind: "incoming", out: [], in: wait }); }
     const link = ($("#n-link").value || "").trim(); if (/^https?:\/\//i.test(link)) deck.link = link;
     const desc = (($("#n-desc") || {}).value || "").trim(); if (desc) deck.desc = desc;
-    save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); toast(wait.length ? `Deck created. ${qsum(wait)} card${qsum(wait) > 1 ? "s are" : " is"} waiting as incoming; press Arrived when they're in hand.` : "Deck created.");
+    let fromBin = 0;
+    if (S.dialog.fromCheck && ($("#n-takebin") || {}).checked) {
+      const owned = curMap(deck); S.decks.set(deck.id, deck);
+      for (const x of S.dialog.fromCheck.bin) { const q = Math.min(x.q, owned.get(x.n) || 0); if (q) fromBin += pullFromBin(x.n, q, deck).got; }
+    }
+    save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); if (fromBin) { toast(`Deck created. ${fromBin} card${fromBin > 1 ? "s" : ""} moved out of the card bin${wait.length ? `, and ${qsum(wait)} waiting as incoming` : ""}.`); return; } toast(wait.length ? `Deck created. ${qsum(wait)} card${qsum(wait) > 1 ? "s are" : " is"} waiting as incoming; press Arrived when they're in hand.` : "Deck created.");
     return;
   }
   if (dlg === "save-edit") {
@@ -1711,6 +1785,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "e-artcard" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); if (e.target.value === "__none") dd.artOff = true; else { dd.artOff = false; dd.artCard = e.target.value; } save(dd); render(); renderDialog(); return; }
   if (e.target.id === "e-artpos" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); dd.artPos = e.target.value; save(dd); render(); renderDialog(); return; }
   if (e.target.id === "del-keep" && S.dialog) S.dialog.keep = e.target.checked;
+  if (e.target.id === "n-takebin" && S.dialog) S.dialog.takeBin = e.target.checked;
   if ((e.target.id === "cmp-a" || e.target.id === "cmp-b") && S.cmp) { S.cmp[e.target.id.slice(4)] = e.target.value; const id = e.target.id; render(); const el = $("#" + id); if (el) el.focus(); return; }
   if (e.target.id === "h-date") S.histDate = e.target.value;
   if (e.target.name === "n-cmd" && S.dialog) { S.dialog.cmdTouched = true; S.dialog.cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value); }
@@ -1727,6 +1802,7 @@ document.addEventListener("input", e => {
   if (id === "n-link" && S.dialog) S.dialog.link = e.target.value;
   if (id === "n-desc" && S.dialog) S.dialog.desc = e.target.value;
   if (id === "n-wait" && S.dialog) S.dialog.wait = e.target.value;
+  if (id === "chk-list") { CHECK_TEXT = e.target.value; try { localStorage.setItem("cdl-check-text", CHECK_TEXT); } catch {} return updateCheck(); }
   if (id === "ba-list" && S.dialog) { S.dialog.text = e.target.value; return updateBinAdd(); }
   if (id === "ba-search") return showBaSugg(e.target.value);
   if (id === "u-list" && S.dialog) { S.dialog.text = e.target.value; return updateDiff(); }
