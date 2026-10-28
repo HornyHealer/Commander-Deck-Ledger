@@ -11,9 +11,10 @@ Track Commander decks: every swap, every cut, every card you've printed, and a b
 | `index.html` | The page shell |
 | `css/style.css` | All styling |
 | `js/app.js` | All of the app's code |
+| `js/card-rules.js` | Reads card text for partner rules, copy limits, extra turns, mass land denial and suggested roles; shared by the site and the card-list builder |
 | `js/firebase-config.js` | Firebase settings for accounts and sync |
 | `firestore.rules` | Database security rules to paste into Firebase |
-| `data/cards.json` | The card list, built from Scryfall: name, mana cost, type, color identity, Commander legality, Game Changer status, partner rules and Scryfall's permanent card ID |
+| `data/cards.json` | The card list, built from Scryfall: name, mana cost, type, color identity, Commander legality, Game Changer status, partner rules, bracket and role flags, and Scryfall's permanent card ID |
 | `scripts/build-cards.mjs` | Builds `data/cards.json` from Scryfall's bulk data |
 | `data/example-deck.json` | The "Try an example deck" deck |
 | `tests/` | Automatic tests |
@@ -29,6 +30,12 @@ Sign-in and sync use Firebase (Google sign-in plus a Firestore database). The se
 Every Tuesday GitHub rebuilds the card list from Scryfall and commits it if anything changed. To update it right away, open the **Actions** tab, choose **Test and deploy**, and click **Run workflow**.
 
 Decks store each card's permanent Scryfall ID, so a card that gets renamed keeps working.
+
+## Bracket and roles
+
+The bracket shown on each deck is the lowest Commander Bracket its cards allow: Game Changers (none in brackets 1–2, up to three in bracket 3), mass land denial (brackets 4–5 only) and extra turns (none in bracket 1). Combos and how fast a deck wins aren't judged, so it's a starting point for the conversation with your table.
+
+Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text by `js/card-rules.js`. Win conditions and protection are set by hand, and any card's roles can be changed on the deck page; those choices are saved with the deck.
 
 ## Publishing
 

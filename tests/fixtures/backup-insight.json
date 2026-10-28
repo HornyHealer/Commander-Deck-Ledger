@@ -1,0 +1,264 @@
+{
+ "app": "commander-deck-ledger",
+ "version": 1,
+ "exported": "2026-10-27T00:00:00Z",
+ "decks": [
+  {
+   "v": 1,
+   "id": "insight-vela",
+   "name": "Night Shift",
+   "commanders": [
+    "Vela the Night-Clad"
+   ],
+   "createdAt": 1759320000000,
+   "updatedAt": 1768046400000,
+   "cur": [
+    {
+     "n": "Vela the Night-Clad",
+     "q": 1
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1
+    },
+    {
+     "n": "Rhystic Study",
+     "q": 1
+    },
+    {
+     "n": "Arcane Signet",
+     "q": 1
+    },
+    {
+     "n": "Thassa's Oracle",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 45
+    },
+    {
+     "n": "Swamp",
+     "q": 47
+    },
+    {
+     "n": "Demonic Tutor",
+     "q": 1
+    },
+    {
+     "n": "Time Warp",
+     "q": 1
+    },
+    {
+     "n": "Cyclonic Rift",
+     "q": 1
+    }
+   ],
+   "orig": [
+    {
+     "n": "Vela the Night-Clad",
+     "q": 1
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1
+    },
+    {
+     "n": "Rhystic Study",
+     "q": 1
+    },
+    {
+     "n": "Counterspell",
+     "q": 1
+    },
+    {
+     "n": "Brainstorm",
+     "q": 1
+    },
+    {
+     "n": "Arcane Signet",
+     "q": 1
+    },
+    {
+     "n": "Thassa's Oracle",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 46
+    },
+    {
+     "n": "Swamp",
+     "q": 47
+    }
+   ],
+   "printed": [
+    {
+     "n": "Vela the Night-Clad",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Rhystic Study",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Counterspell",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Brainstorm",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Arcane Signet",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Thassa's Oracle",
+     "q": 1,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Island",
+     "q": 46,
+     "at": 1759320000000,
+     "o": 0
+    },
+    {
+     "n": "Swamp",
+     "q": 47,
+     "at": 1759320000000,
+     "o": 0
+    }
+   ],
+   "log": [
+    {
+     "id": "ins0",
+     "t": 1759320000000,
+     "kind": "create",
+     "count": 100
+    },
+    {
+     "id": "ins1",
+     "t": 1762344000000,
+     "kind": "swap",
+     "out": [
+      {
+       "n": "Brainstorm",
+       "q": 1
+      }
+     ],
+     "in": [
+      {
+       "n": "Demonic Tutor",
+       "q": 1
+      }
+     ]
+    },
+    {
+     "id": "ins2",
+     "t": 1768046400000,
+     "kind": "swap",
+     "out": [
+      {
+       "n": "Counterspell",
+       "q": 1
+      },
+      {
+       "n": "Island",
+       "q": 1
+      }
+     ],
+     "in": [
+      {
+       "n": "Time Warp",
+       "q": 1
+      },
+      {
+       "n": "Cyclonic Rift",
+       "q": 1
+      }
+     ],
+     "note": "More gas"
+    }
+   ],
+   "bench": {
+    "out": [],
+    "in": [],
+    "note": ""
+   }
+  },
+  {
+   "v": 1,
+   "id": "insight-calm",
+   "name": "Calm Waters",
+   "commanders": [
+    "Vela the Night-Clad"
+   ],
+   "createdAt": 1759320000000,
+   "updatedAt": 1759320000000,
+   "cur": [
+    {
+     "n": "Vela the Night-Clad",
+     "q": 1
+    },
+    {
+     "n": "Time Warp",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 98
+    }
+   ],
+   "orig": [
+    {
+     "n": "Vela the Night-Clad",
+     "q": 1
+    },
+    {
+     "n": "Time Warp",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 98
+    }
+   ],
+   "printed": [],
+   "log": [
+    {
+     "id": "calm0",
+     "t": 1759320000000,
+     "kind": "create",
+     "count": 100
+    }
+   ],
+   "bench": {
+    "out": [],
+    "in": [],
+    "note": ""
+   }
+  }
+ ],
+ "bin": {
+  "cards": []
+ }
+}

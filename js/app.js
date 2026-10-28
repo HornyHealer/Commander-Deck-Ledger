@@ -31,7 +31,8 @@ function cmcOf(n) {
 }
 const isBasic = n => BASICS.has(norm(n));
 // Card records: [name, cost, type, colorIdentity, flags, oracleId, pairCode, copyLimit] (see scripts/build-cards.mjs)
-const F = { COMMANDER: 1, BANNED: 2, GAME_CHANGER: 4, NOT_LEGAL: 8 };
+const RULES = window.CardRules; // js/card-rules.js, shared with the card-list builder
+const F = RULES.FLAG;
 const flagsOf = r => (r ? (r[4] | 0) : 0);
 const canLead = r => !!r && (flagsOf(r) & F.COMMANDER) > 0;
 const pairOf = r => (r && r[6]) || "";
@@ -76,6 +77,7 @@ const ICONS = {
   stack: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="2" width="8" height="10.5" rx="1"/><path d="M2.5 4.5v9h7.5"/></svg>',
   print: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 6V2.5h7V6"/><rect x="2" y="6" width="12" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/></svg>',
   printed: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  tag: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 2.5h5l6 6-5 5-6-6z"/><circle cx="5.5" cy="5.5" r="1"/></svg>',
   list: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M3 8h10M3 12h6"/><path d="m11 11 1.5 1.5L15 10"/></svg>',
 };
 
@@ -565,18 +567,6 @@ function addRec(r, alias) {
 }
 function loadExtraCards() { for (const [alias, r] of Object.entries(EXTRA)) if (Array.isArray(r) && r.length >= 5) addRec(r, alias); }
 function scryCost(s) { return (s || "").split(" // ").map(f => (f.match(/\{([^}]+)\}/g) || []).map(x => x.slice(1, -1)).join(" ")).join(" // "); }
-function scryPair(text, typeLine) {
-  let m;
-  if ((m = text.match(/\bPartner with ([^\n(]+?)\s*(?:\(|$)/m))) return "PW:" + m[1].trim();
-  if ((m = text.match(/^Partner\s*[—-]\s*([^\n(]+?)\s*(?:\(|$)/m))) return "PV:" + m[1].trim();
-  if (/^Partner\s*(?:\(|$)/m.test(text)) return "P";
-  if (/^Friends forever\b/m.test(text)) return "FF";
-  if (/\bChoose a Background\b/i.test(text)) return "CB";
-  if (/\bDoctor's companion\b/i.test(text)) return "DC";
-  if (/\bBackground\b/.test(front(typeLine))) return "BG";
-  if (/\bTime Lord Doctor\b/.test(typeLine)) return "TD";
-  return "";
-}
 function scryRec(c) {
   if (!c || !c.name) return null;
   const faces = c.card_faces || [];
@@ -594,9 +584,9 @@ function scryRec(c) {
   if (legal === "banned") flags |= F.BANNED;
   if (legal === "not_legal") flags |= F.NOT_LEGAL;
   if (c.game_changer === true) flags |= F.GAME_CHANGER;
-  const r = [c.name, scryCost(cost), tc, ci, flags, c.oracle_id || "", scryPair(text, frontType)];
-  const any = /A deck can have any number of cards named/i.test(text); const upTo = text.match(/A deck can have up to (\w+) cards named/i);
-  if (any) r.push(-1); else if (upTo) r.push(({ seven: 7, nine: 9 })[upTo[1].toLowerCase()] || parseInt(upTo[1], 10) || 0);
+  flags |= RULES.textFlags(text, tc);
+  const r = [c.name, scryCost(cost), tc, ci, flags, c.oracle_id || "", RULES.pairCode(text, frontType)];
+  const limit = RULES.copyLimit(text); if (limit) r.push(limit);
   return r;
 }
 const looked = new Set(); let lookTimer = null, looking = false;
@@ -686,6 +676,7 @@ document.addEventListener("focusout", () => { if (pendingRender) setTimeout(() =
 
 // ---------- routing ----------
 function go(view, deckId) {
+  if (deckId !== S.deckId) { S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
   S.view = view; S.deckId = deckId || null; S.filter = ""; S.confirm = null;
   try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "all" ? "#all-cards" : location.pathname + location.search); } catch {}
   render(); window.scrollTo(0, 0);
@@ -724,7 +715,8 @@ function renderLibrary() {
     return `<div class="deckbox${art ? " has-art" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(artSrcOf(d))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
       <div class="cmd">${esc(cmd)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
       <div class="dname">${esc(d.name)}</div>
-      <div>${ciPips(ci)}</div>
+      ${d.desc ? `<div class="ddesc">${esc(d.desc)}</div>` : ""}
+      <div class="pipline">${ciPips(ci)}<span class="bpill" title="Bracket estimate">Bracket ${esc(bracketOf(d.cur).label)}</span></div>
       <div class="stats"><span><b>${t}</b> in deck</span><span><b>${printedTotal(d)}</b> printed</span><span><b>${changes}</b> changes</span></div>
       ${toPrint ? `<div class="tp-pill"><b class="mono">${toPrint}</b> to print</div>` : `<div class="tp-pill done">All printed</div>`}
       <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
@@ -943,7 +935,131 @@ function renderChecks(d, issues) {
   if (!issues.length || !S.showChecks) return "";
   return `<div class="checks" id="deck-checks"><ul>${issues.map(x => `<li><span class="flag bad">${esc({ count: "Count", commander: "Commander", banned: "Banned", notlegal: "Not legal", singleton: "Singleton", colors: "Colors" }[x.kind])}</span><span>${esc(x.text)}${x.cards && x.cards.length ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul></div>`;
 }
+// ---------- deck insight: bracket, roles and past versions ----------
+// Commander Brackets (Oct 2025 rules): Game Changers, mass land denial and extra turns set the lowest
+// bracket a deck can be in. Combos and how fast it wins can only be judged by the people playing it.
+const BRACKET_NAMES = { 1: "Exhibition", 2: "Core", 3: "Upgraded", 4: "Optimized", 5: "cEDH" };
+let textFlagsReady = null; // false until the card list has been rebuilt with text flags
+const hasTextFlags = () => textFlagsReady || (textFlagsReady = CARDS.some(r => (r[4] | 0) >= 16));
+function bracketOf(cards) {
+  const gc = [], mld = [], et = [];
+  for (const c of cards) { const f = flagsOf(rec(c.n)); if (f & F.GAME_CHANGER) gc.push(c.n); if (f & F.LAND_DENIAL) mld.push(c.n); if (f & F.EXTRA_TURN) et.push(c.n); }
+  const lo = mld.length || gc.length > 3 ? 4 : gc.length ? 3 : et.length ? 2 : 1;
+  const reasons = [];
+  if (gc.length > 3) reasons.push({ kind: "Game Changers", text: `${gc.length} Game Changers. Bracket 3 allows up to three, so this deck is bracket 4 or higher.`, cards: gc });
+  else if (gc.length) reasons.push({ kind: "Game Changers", text: `${gc.length} Game Changer${gc.length === 1 ? "" : "s"}. Brackets 1 and 2 allow none and bracket 3 allows up to three.`, cards: gc });
+  else reasons.push({ kind: "Game Changers", text: "No Game Changers, so brackets 1 and 2 are open to this deck." });
+  if (mld.length) reasons.push({ kind: "Land denial", text: "Mass land denial, which only brackets 4 and 5 allow.", cards: mld });
+  if (et.length) reasons.push({ kind: "Extra turns", text: et.length >= 3 ? `${et.length} extra-turn cards. Bracket 1 allows none, and brackets 2 and 3 allow them only if they aren't chained together.` : "Bracket 1 allows no extra turns. Brackets 2 and 3 allow them as long as they aren't chained together.", cards: et });
+  return { lo, label: lo === 1 ? "1–2" : lo === 4 ? "4+" : String(lo), name: lo === 1 ? "Exhibition or Core" : BRACKET_NAMES[lo], gc, mld, et, reasons };
+}
+function renderBracket(b) {
+  if (!S.showBracket) return "";
+  return `<div class="checks bracket-why" id="deck-bracket"><p class="bracket-head"><b>Bracket ${esc(b.label)}</b> · ${esc(b.name)}</p><ul>${b.reasons.map(x => `<li><span class="flag ${x.cards ? "warn" : "good"}">${esc(x.kind)}</span><span>${esc(x.text)}${x.cards ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul>
+    <p class="muted bracket-note">This is the lowest bracket the cards allow. Two-card combos (none in brackets 1–2, none before turn six in bracket 3) and how fast the deck wins can push it higher, so settle the final number with your table.${hasTextFlags() ? "" : " Mass land denial and extra turns will be checked once the card list finishes updating."}</p></div>`;
+}
+
+const ROLES = [["ramp", "Ramp", F.RAMP], ["draw", "Draw", F.DRAW], ["removal", "Removal", F.REMOVAL], ["wipe", "Wipes", F.WIPE], ["tutor", "Tutors", F.TUTOR], ["wincon", "Win cons", 0], ["protect", "Protection", 0]];
+const ROLE_NAME = { ramp: "Ramp", draw: "Draw", removal: "Removal", wipe: "Wipe", tutor: "Tutor", wincon: "Win con", protect: "Protection" };
+const roleKey = c => c.i || (rec(c.n) || [])[5] || c.n;
+function autoRoles(n) { const f = flagsOf(rec(n)); return ROLES.filter(r => r[2] && (f & r[2])).map(r => r[0]); }
+function rolesOf(d, c) { const o = d.roles && d.roles[roleKey(c)]; return Array.isArray(o) ? o : autoRoles(c.n); }
+function roleCounts(d, cards) { const m = Object.fromEntries(ROLES.map(r => [r[0], 0])); for (const c of cards) for (const r of rolesOf(d, c)) if (r in m) m[r] += c.q; return m; }
+function setRoles(d, n, list) {
+  const c = d.cur.find(x => x.n === n); if (!c) return;
+  const order = ROLES.map(r => r[0]); list = order.filter(r => list.includes(r));
+  d.roles = d.roles || {};
+  if (list.join() === autoRoles(n).join()) delete d.roles[roleKey(c)]; else d.roles[roleKey(c)] = list;
+  if (!Object.keys(d.roles).length) delete d.roles;
+}
+function rolesBar(d) {
+  const counts = roleCounts(d, d.cur);
+  return `<div class="roles-bar"><span class="label">Roles</span><div class="chips">${ROLES.map(([id, label]) => `<button class="chip${S.roleFilter === id ? " on" : ""}" data-rolefilter="${id}" aria-pressed="${S.roleFilter === id}">${label}<b class="mono">${counts[id]}</b></button>`).join("")}</div><span class="muted rhint">Suggested from each card's text. Use the tag button on a card to change its roles. Tap a role to show only those cards.</span></div>`;
+}
+
+function changeTitle(e) {
+  const o = (e.out || []).length, i = (e.in || []).length;
+  return e.kind === "import" ? "Updated from pasted list" : o && i ? `Swapped ${o === i ? o : o + " for " + i} card${Math.max(o, i) > 1 ? "s" : ""}` : o ? `Cut ${o} card${o > 1 ? "s" : ""}` : `Added ${i} card${i > 1 ? "s" : ""}`;
+}
+// Points in a deck's life that can be viewed or compared.
+function versionPoints(d) {
+  const pts = [{ key: "start", t: d.createdAt, label: `Original list (${fmtDate(d.createdAt)})` }];
+  for (const e of d.log) if (isChange(e)) pts.push({ key: e.id, t: e.t, label: `${fmtDate(e.t)}: ${changeTitle(e)}` });
+  pts.push({ key: "now", t: Date.now(), label: "Now" });
+  return pts;
+}
+// The deck's list at a point: "start", "now", a history entry's id (right after that change) or a time.
+function versionAt(d, key) {
+  if (key === "now") return d.cur.map(c => ({ n: c.n, q: c.q }));
+  const base = origOf(d); const cm = new Map(base.map(c => [c.n, c.q])); const order = base.map(c => c.n);
+  if (key !== "start") for (const e of d.log) {
+    if (typeof key === "number" && e.t > key) break;
+    if (isChange(e)) {
+      for (const o of e.out || []) { const v = (cm.get(o.n) || 0) - o.q; if (v > 0) cm.set(o.n, v); else cm.delete(o.n); }
+      for (const i of e.in || []) { if (!cm.has(i.n)) order.push(i.n); cm.set(i.n, (cm.get(i.n) || 0) + i.q); }
+    }
+    if (e.id === key) break;
+  }
+  return [...new Set(order)].filter(n => cm.has(n)).map(n => ({ n, q: cm.get(n) }));
+}
+function versionLabel(d, key) {
+  if (typeof key === "number") return "as of the end of " + fmtDate(key);
+  if (key === "start") return "as first listed, " + fmtDate(d.createdAt);
+  const e = d.log.find(x => x.id === key); return e ? `after the ${fmtDate(e.t)} change` : "today";
+}
+function deckStats(d, cards) {
+  const cmds = d.commanders || []; let n = 0, lands = 0, mv = 0, spells = 0;
+  for (const c of cards) { n += c.q; if (typeOf(c.n) === "L") lands += c.q; else if (!cmds.includes(c.n)) { mv += cmcOf(c.n) * c.q; spells += c.q; } }
+  return { n, lands, avg: spells ? mv / spells : 0, bracket: bracketOf(cards), roles: roleCounts(d, cards) };
+}
+function listDiff(a, b) {
+  const am = new Map(a.map(c => [c.n, c.q])), bm = new Map(b.map(c => [c.n, c.q])); const out = [], ins = [];
+  for (const [n, q] of am) { const v = q - (bm.get(n) || 0); if (v > 0) out.push({ n, q: v }); }
+  for (const [n, q] of bm) { const v = q - (am.get(n) || 0); if (v > 0) ins.push({ n, q: v }); }
+  return { out: out.sort((x, y) => x.n.localeCompare(y.n)), ins: ins.sort((x, y) => x.n.localeCompare(y.n)) };
+}
+function renderSnapshot(d) {
+  const key = S.snap.key; const cards = versionAt(d, key); const st = deckStats(d, cards); const now = curMap(d);
+  const cmds = d.commanders || []; const groups = new Map();
+  for (const c of cards) { const g = cmds.includes(c.n) ? "CMD" : typeOf(c.n); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c); }
+  const df = listDiff(cards, d.cur); const changed = qsum(df.out) + qsum(df.ins);
+  let h = `<button class="crumb" data-act="snap-close">${ICONS.back}Back to the current deck</button>
+  <div class="snap-banner" role="status"><div><span class="label">Past version</span><b>${esc(d.name)} ${esc(versionLabel(d, key))}</b><span class="muted">${changed ? `${qsum(df.out)} card${qsum(df.out) === 1 ? "" : "s"} here are gone now, and ${qsum(df.ins)} have been added since.` : "Same as the deck today."} This view is read-only.</span></div><div class="snap-acts"><button class="btn sm" data-act="copy-snap">${ICONS.copy}Copy this list</button><button class="btn sm primary" data-act="snap-close">Back to current</button></div></div>
+  <div class="summary">
+    <div class="k"><span class="label">Cards</span><span class="v">${st.n}</span></div>
+    <div class="k"><span class="label">Lands</span><span class="v">${st.lands}</span></div>
+    <div class="k"><span class="label">Avg. mana value</span><span class="v">${st.avg.toFixed(2)}</span></div>
+    <div class="k"><span class="label">Bracket</span><span class="v">${esc(st.bracket.label)}</span></div>
+    <div class="k"><span class="label">Roles</span><span class="role-mini">${ROLES.map(([id, l]) => `<span>${l} <b class="mono">${st.roles[id]}</b></span>`).join("")}</span></div>
+  </div><div class="groups">`;
+  for (const g of ["CMD", ...TYPE_ORDER]) {
+    const arr = groups.get(g); if (!arr) continue; arr.sort(cardSorter(S.sort));
+    h += `<div class="group"><h3>${g === "CMD" ? "Commander" : TYPE_NAME[g]}<span class="mono">${qsum(arr)}</span></h3>`;
+    for (const c of arr) {
+      const r = rec(c.n); const have = now.get(c.n) || 0;
+      const fl = have >= c.q ? "" : have ? `<span class="flag plain">${have} in deck now</span>` : '<span class="flag plain">Not in deck now</span>';
+      h += `<div class="row"><span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${fl}</span>${r ? pipsFor(r[1]) : "<span></span>"}<span class="acts"><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+    }
+    h += `</div>`;
+  }
+  return h + `</div>`;
+}
+function renderCompare(d) {
+  const pts = versionPoints(d); const c = S.cmp;
+  const sel = (id, v) => `<select class="field" id="${id}">${pts.map(p => `<option value="${esc(p.key)}" ${p.key === v ? "selected" : ""}>${esc(p.label)}</option>`).join("")}</select>`;
+  const A = versionAt(d, c.a), B = versionAt(d, c.b); const sa = deckStats(d, A), sb = deckStats(d, B); const df = listDiff(A, B);
+  const delta = (x, y, dp = 0) => { const v = y - x; if (Math.abs(v) < (dp ? 0.005 : 1)) return '<span class="muted">–</span>'; return `<span class="${v > 0 ? "up" : "down"}">${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(dp)}</span>`; };
+  const rows = [["Cards", sa.n, sb.n, delta(sa.n, sb.n)], ["Lands", sa.lands, sb.lands, delta(sa.lands, sb.lands)], ["Avg. mana value", sa.avg.toFixed(2), sb.avg.toFixed(2), delta(sa.avg, sb.avg, 2)], ["Bracket", sa.bracket.label, sb.bracket.label, sa.bracket.lo === sb.bracket.lo ? '<span class="muted">–</span>' : `<span class="${sb.bracket.lo > sa.bracket.lo ? "up" : "down"}">${sb.bracket.lo > sa.bracket.lo ? "Higher" : "Lower"}</span>`],
+    ...ROLES.map(([id, l]) => [l, sa.roles[id], sb.roles[id], delta(sa.roles[id], sb.roles[id])])];
+  const list = (arr, cls) => arr.length ? arr.map(x => `<span class="${cls}">${x.q > 1 ? x.q + "x " : ""}${esc(x.n)}</span>`).join("") : '<span class="muted">Nothing</span>';
+  return `<div class="compare" id="compare"><div class="cmp-head"><h3>Compare versions</h3><button class="iconbtn" data-act="cmp-close" aria-label="Close comparison">${ICONS.x}</button></div>
+    <div class="cmp-pick"><label class="f"><span class="label">From</span>${sel("cmp-a", c.a)}</label><span class="arr">→</span><label class="f"><span class="label">To</span>${sel("cmp-b", c.b)}</label></div>
+    <table class="cmp-table"><thead><tr><th></th><th>From</th><th>To</th><th>Change</th></tr></thead><tbody>${rows.map(r => `<tr><th>${r[0]}</th><td class="mono">${r[1]}</td><td class="mono">${r[2]}</td><td class="mono">${r[3]}</td></tr>`).join("")}</tbody></table>
+    <div class="cmp-diff"><div><span class="label out">Taken out <b class="mono">${qsum(df.out)}</b></span><div class="cmp-list">${list(df.out, "o")}</div></div><div><span class="label in">Put in <b class="mono">${qsum(df.ins)}</b></span><div class="cmp-list">${list(df.ins, "i")}</div></div></div></div>`;
+}
+
 function renderDeck(d) {
+  if (S.snap && S.snap.id === d.id) return renderSnapshot(d);
   const t = total(d); const ci = deckCI(d); const removed = removedList(d);
   const changes = d.log.filter(isChange); const histCount = d.log.filter(e => e.kind !== "create").length;
   const curve = Array(8).fill(0);
@@ -951,7 +1067,7 @@ function renderDeck(d) {
   const mx = Math.max(1, ...curve);
   const lands = d.cur.filter(c => typeOf(c.n) === "L").reduce((a, c) => a + c.q, 0);
   const unknown = d.cur.filter(c => !rec(c.n)).length;
-  const issues = legality(d);
+  const issues = legality(d); const br = bracketOf(d.cur);
   const toPrint = qsum(unprinted(d));
   const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : "No commander set";
   let h = `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
@@ -959,6 +1075,7 @@ function renderDeck(d) {
     <div class="eyebrow">${ciPips(ci)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
     <h2>${esc(cmd)}</h2>
     <div class="dn">${esc(d.name)} · started ${fmtDate(d.createdAt)}${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : ""}</div>
+    ${d.desc ? `<p class="ddesc">${esc(d.desc)}</p>` : ""}
   </div><div class="actions">
     <button class="btn" data-act="update">${ICONS.list}Update from list</button>
     <button class="btn" data-act="edit">Edit details</button>
@@ -971,7 +1088,8 @@ function renderDeck(d) {
     <div class="k"><span class="label">Changes</span><span class="v">${changes.length}</span></div>
     <div class="k"><span class="label">Curve</span><div class="curve">${curve.map(v => `<div style="height:${Math.round(v / mx * 100)}%" title="${v}"></div>`).join("")}</div><div class="curve-l">${curve.map((_, i) => `<span>${i === 7 ? "7+" : i}</span>`).join("")}</div></div>
     <div class="k"><span class="label">Rules</span><span class="checkcell">${issues.length ? `<button class="flag bad flagbtn" data-act="toggle-checks" aria-expanded="${!!S.showChecks}" aria-controls="deck-checks">${issues.length} issue${issues.length === 1 ? "" : "s"} ${S.showChecks ? "▴" : "▾"}</button>` : `<span class="flag good" style="margin:0">Legal</span>`}${unknown ? `<span class="flag warn" style="margin:0">${unknown} unrecognized</span>` : ""}</span></div>
-  </div>${renderChecks(d, issues)}
+    <div class="k"><span class="label">Bracket</span><button class="v bracket-btn" data-act="toggle-bracket" aria-expanded="${!!S.showBracket}" aria-controls="deck-bracket" title="Why this bracket?">${esc(br.label)}<span class="bname">${esc(br.name)} ${S.showBracket ? "▴" : "▾"}</span></button></div>
+  </div>${renderChecks(d, issues)}${renderBracket(br)}
   <div class="layout"><div style="min-width:0">
     <div class="tabs" role="tablist">
       ${tabBtn("current", "Current list", t)}
@@ -1003,12 +1121,14 @@ function renderCurrent(d) {
   const groups = new Map(); const cmds = d.commanders || [];
   for (const c of d.cur) {
     if (f && !norm(c.n).includes(f)) continue;
+    if (S.roleFilter && !rolesOf(d, c).includes(S.roleFilter)) continue;
     const g = cmds.includes(c.n) ? "CMD" : typeOf(c.n);
     if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c);
   }
   let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"}>Unprinted only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div><span class="muted" style="font-size:12px;flex-basis:100%">Drag a card onto <b>Removed</b> or the bench, or use the scissors.</span></div>`;
   if (todo.length) h += `<div class="toprint"><span><b class="mono">${qsum(todo)}</b> card${qsum(todo) > 1 ? "s" : ""} not printed yet</span><span class="grow"></span><button class="btn sm" data-act="copy-toprint">${ICONS.copy}Copy print list</button>${S.confirm === "printall" ? `<span class="confirm">Mark all ${qsum(todo)} as printed? <button class="btn sm primary" data-act="printall-yes">Mark printed</button><button class="btn sm ghost" data-act="printall-no">Cancel</button></span>` : `<button class="btn sm" data-act="printall">${ICONS.print}Mark all printed</button>`}</div>`;
-  if (!groups.size) return h + `<p class="muted">No cards match “${esc(S.filter)}”.</p>`;
+  h += rolesBar(d);
+  if (!groups.size) return h + `<p class="muted">${S.roleFilter ? `No cards${S.filter ? ` matching “${esc(S.filter)}”` : ""} have the ${esc(ROLE_NAME[S.roleFilter])} role.` : `No cards match “${esc(S.filter)}”.`}</p>`;
   h += `<div class="groups">`;
   for (const g of ["CMD", ...TYPE_ORDER]) {
     const arr = groups.get(g); if (!arr) continue;
@@ -1021,9 +1141,12 @@ function renderCurrent(d) {
       const rf = flagsOf(r), lim = limitOf(r);
       const ruleFlags = (rf & F.BANNED ? '<span class="flag bad">Banned</span>' : rf & F.NOT_LEGAL ? '<span class="flag bad">Not legal</span>' : "") + (r && !isBasic(c.n) && lim !== -1 && c.q > (lim > 0 ? lim : 1) ? '<span class="flag bad">Too many copies</span>' : "");
       const flags = prFlag + inBin + ruleFlags + (!r ? '<span class="flag warn">Unrecognized</span>' : "") + (outsideCI(d, c.n) ? '<span class="flag bad">Outside colors</span>' : "") + (st ? `<span class="flag bad">Cutting${c.q > 1 ? " " + st : ""}</span>` : "");
-      h += `<div class="row${st ? " staged-out" : ""}" draggable="true" data-drag="cur" data-name="${esc(c.n)}">
-        <span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${flags}</span>${r ? pipsFor(r[1]) : "<span></span>"}
-        <span class="acts">${pq >= c.q ? `<span class="iconbtn done" title="Printed" aria-label="Printed">${ICONS.printed}</span>` : `<button class="iconbtn todo" title="Mark ${esc(c.n)} as printed" aria-label="Mark ${esc(c.n)} as printed" data-print="${esc(c.n)}">${ICONS.print}</button>`}<button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" title="Open on Scryfall" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+      const roles = rolesOf(d, c); const editing = S.roleEdit === c.n;
+      const rtags = roles.length ? `<span class="rtags">${roles.map(x => `<span class="rtag">${ROLE_NAME[x] || esc(x)}</span>`).join("")}</span>` : "";
+      const redit = editing ? `<span class="roleedit" role="group" aria-label="Roles for ${esc(c.n)}">${ROLES.map(([id, l]) => `<button class="chip sm${roles.includes(id) ? " on" : ""}" aria-pressed="${roles.includes(id)}" data-roletoggle="${esc(JSON.stringify([c.n, id]))}">${ROLE_NAME[id]}</button>`).join("")}${d.roles && d.roles[roleKey(c)] ? `<button class="btn sm ghost" data-rolereset="${esc(c.n)}">Use suggested</button>` : ""}<button class="btn sm" data-act="role-done">Done</button></span>` : "";
+      h += `<div class="row${st ? " staged-out" : ""}${editing ? " editing" : ""}" draggable="true" data-drag="cur" data-name="${esc(c.n)}">
+        <span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${flags}${rtags}${redit}</span>${r ? pipsFor(r[1]) : "<span></span>"}
+        <span class="acts"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button>${pq >= c.q ? `<span class="iconbtn done" title="Printed" aria-label="Printed">${ICONS.printed}</span>` : `<button class="iconbtn todo" title="Mark ${esc(c.n)} as printed" aria-label="Mark ${esc(c.n)} as printed" data-print="${esc(c.n)}">${ICONS.print}</button>`}<button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" title="Open on Scryfall" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
     }
     h += `</div>`;
   }
@@ -1074,19 +1197,19 @@ function swapLines(e) {
 }
 function renderHistory(d) {
   const entries = [...d.log].reverse();
-  return `<div class="hist">${entries.map((e, k) => {
+  const today = new Date(); const iso = x => { const z = new Date(x); return `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, "0")}-${String(z.getDate()).padStart(2, "0")}`; };
+  const tools = `<div class="hist-tools"><label class="f"><span class="label">See the deck on a date</span><span class="datego"><input class="field" type="date" id="h-date" min="${iso(d.createdAt)}" max="${iso(today)}" value="${esc(S.histDate || iso(today))}"><button class="btn sm" data-act="view-date">View</button></span></label>${S.cmp ? "" : `<button class="btn sm" data-act="cmp-open">Compare versions</button>`}</div>`;
+  return tools + (S.cmp ? renderCompare(d) : "") + `<div class="hist">${entries.map((e, k) => {
     const latest = k === 0 && e.kind !== "create";
     let title;
     const pl = e.cards ? qsum(e.cards) : 0; const s = pl > 1 ? "s" : "";
     if (e.kind === "create") title = `Deck created with ${e.count} cards`;
     else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(esc).join(", ") + ")" : ""}` : `Printed ${pl} card${s}`;
     else if (e.kind === "unprint") title = e.to ? `Moved ${pl} printed card${s} to ${esc(e.to.name)}` : `Removed ${pl} card${s} from printed`;
-    else {
-      const o = (e.out || []).length, i = (e.in || []).length;
-      title = e.kind === "import" ? "Updated from pasted list" : o && i ? `Swapped ${o === i ? o : o + " for " + i} card${Math.max(o, i) > 1 ? "s" : ""}` : o ? `Cut ${o} card${o > 1 ? "s" : ""}` : `Added ${i} card${i > 1 ? "s" : ""}`;
-    }
+    else title = changeTitle(e);
     const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">Undo this change? <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
-    return `<div class="entry"><div class="when">${fmtDate(e.t)}</div><div class="what"><div class="kind">${title}${undo}</div>${e.kind === "create" ? "" : e.cards ? `<div class="plines ${e.kind}">${e.cards.map(c => `<span>${c.q}x ${esc(c.n)}</span>`).join("")}</div>` : swapLines(e)}${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}</div></div>`;
+    const view = e.kind === "create" || isChange(e) ? `<button class="btn sm ghost" data-snap="${e.kind === "create" ? "start" : esc(e.id)}">${e.kind === "create" ? "View original list" : "View deck after this"}</button>` : "";
+    return `<div class="entry"><div class="when">${fmtDate(e.t)}</div><div class="what"><div class="kind">${title}${undo}${view}</div>${e.kind === "create" ? "" : e.cards ? `<div class="plines ${e.kind}">${e.cards.map(c => `<span>${c.q}x ${esc(c.n)}</span>`).join("")}</div>` : swapLines(e)}${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}</div></div>`;
   }).join("")}</div>`;
 }
 
@@ -1203,6 +1326,7 @@ function renderDialog() {
     <div class="db">
       <label class="f"><span class="label">Deck name</span><input class="field" id="n-name" placeholder="Flaming Cobra Chickens" value="${esc(dl.name || "")}"></label>
       <label class="f"><span class="label">Archidekt link (optional)</span><input class="field" id="n-link" placeholder="https://archidekt.com/decks/…" value="${esc(dl.link || "")}"></label>
+      <label class="f"><span class="label">Short description (optional)</span><textarea class="field short" id="n-desc" maxlength="280" placeholder="What the deck does and how it wins">${esc(dl.desc || "")}</textarea></label>
       <label class="f"><span class="label">Deck list</span><textarea class="field" id="n-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(dl.text || "")}</textarea></label>
       <div id="n-parse"></div>
       <label class="checkline"><input type="checkbox" id="n-printed" ${dl.printedNow === false ? "" : "checked"}> I've already printed this list</label>
@@ -1216,6 +1340,7 @@ function renderDialog() {
     <div class="db">
       <label class="f"><span class="label">Deck name</span><input class="field" id="e-name" value="${esc(dl.name ?? d.name)}"></label>
       <label class="f"><span class="label">Archidekt link</span><input class="field" id="e-link" value="${esc(dl.link ?? (d.link || ""))}" placeholder="https://archidekt.com/decks/…"></label>
+      <label class="f"><span class="label">Short description</span><textarea class="field short" id="e-desc" maxlength="280" placeholder="What the deck does and how it wins">${esc(dl.desc ?? (d.desc || ""))}</textarea></label>
       <div class="f"><span class="label">Commander</span><div class="cmdpick" style="margin-top:5px">${opts.length ? opts.map(n => `<label><input type="checkbox" name="e-cmd" value="${esc(n)}" ${(dl.cmds || d.commanders || []).includes(n) ? "checked" : ""}>${esc(n)}</label>`).join("") : '<span class="muted">No legendary creatures in this list.</span>'}</div></div>
       <div class="f"><span class="label">Panel art</span>${(() => {
         const art = artNameOf(d); const cmds = d.commanders || [];
@@ -1263,7 +1388,7 @@ function renderDialog() {
   if (dl.kind === "binadd") { updateBinAdd(); setTimeout(() => $("#ba-search") && $("#ba-search").focus(), 0); }
   if (dl.kind === "copy") setTimeout(() => { const t = $("#c-text"); if (t) { t.focus(); t.select(); } }, 0);
 }
-function keepDialogFields() { const n = $("#e-name"), l = $("#e-link"); if (S.dialog && n) { S.dialog.name = n.value; S.dialog.link = l ? l.value : S.dialog.link; S.dialog.cmds = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value); } }
+function keepDialogFields() { const n = $("#e-name"), l = $("#e-link"), ds = $("#e-desc"); if (S.dialog && n) { S.dialog.name = n.value; S.dialog.link = l ? l.value : S.dialog.link; if (ds) S.dialog.desc = ds.value; S.dialog.cmds = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value); } }
 async function shrinkImage(file) {
   const url = URL.createObjectURL(file);
   try {
@@ -1363,6 +1488,11 @@ document.addEventListener("click", e => {
   if (t.dataset.allchip) { S.allChip = t.dataset.allchip; return render(); }
   if (t.dataset.pf) { S.printedFilter = t.dataset.pf; return render(); }
   if (t.dataset.cut && d) return stage(d, "out", t.dataset.cut);
+  if (t.dataset.rolefilter) { S.roleFilter = S.roleFilter === t.dataset.rolefilter ? null : t.dataset.rolefilter; return render(); }
+  if (t.dataset.roleedit) { S.roleEdit = S.roleEdit === t.dataset.roleedit ? null : t.dataset.roleedit; return render(); }
+  if (t.dataset.roletoggle && d) { const [n, role] = JSON.parse(t.dataset.roletoggle); const c = d.cur.find(x => x.n === n); if (c) { const now = rolesOf(d, c); setRoles(d, n, now.includes(role) ? now.filter(x => x !== role) : [...now, role]); save(d); render(); } return; }
+  if (t.dataset.rolereset && d) { const c = d.cur.find(x => x.n === t.dataset.rolereset); if (c && d.roles) { delete d.roles[roleKey(c)]; if (!Object.keys(d.roles).length) delete d.roles; save(d); render(); } return; }
+  if (t.dataset.snap && d) { S.snap = { id: d.id, key: t.dataset.snap }; render(); window.scrollTo(0, 0); return; }
   if (t.dataset.print && d) { const have = curMap(d).get(t.dataset.print) || 0; const p = printedMap(d).get(t.dataset.print) || 0; if (have > p) { printCards(d, [{ n: t.dataset.print, q: have - p }]); save(d); render(); toast(`${t.dataset.print} marked as printed.`); } return; }
   if (t.dataset.printArt !== undefined && S.dialog && S.dialog.kind === "edit") {
     const dd = S.decks.get(S.dialog.id); keepDialogFields(); const art = artNameOf(dd); const id = t.dataset.printArt;
@@ -1389,6 +1519,18 @@ document.addEventListener("click", e => {
   if (act === "acct-menu") { CLOUD.menu = !CLOUD.menu; return render(); }
   if (act === "signout") { CLOUD.menu = false; return signOutNow(); }
   if (act === "toggle-checks") { S.showChecks = !S.showChecks; return render(); }
+  if (act === "toggle-bracket") { S.showBracket = !S.showBracket; return render(); }
+  if (act === "role-done") { S.roleEdit = null; return render(); }
+  if (act === "snap-close") { S.snap = null; render(); window.scrollTo(0, 0); return; }
+  if (act === "copy-snap" && d && S.snap) return copyText(listText(d, versionAt(d, S.snap.key), true), "Past version");
+  if (act === "view-date" && d) {
+    const v = ($("#h-date") || {}).value || ""; const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return toast("Pick a date first.");
+    S.histDate = v; const end = new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999).getTime();
+    if (end < d.createdAt) return toast(`This deck was started on ${fmtDate(d.createdAt)}.`);
+    S.snap = { id: d.id, key: end }; render(); window.scrollTo(0, 0); return;
+  }
+  if (act === "cmp-open" && d) { const pts = versionPoints(d); S.cmp = { a: pts.length > 2 ? pts[pts.length - 2].key : "start", b: "now" }; return render(); }
+  if (act === "cmp-close") { S.cmp = null; return render(); }
   if (act === "backup-snooze") { lsSetNum(SNOOZE_KEY, Date.now() + 3 * DAY); return render(); }
   if (act === "example") {
     fetch("data/example-deck.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(ex => {
@@ -1428,6 +1570,7 @@ document.addEventListener("click", e => {
     const name = ($("#n-name").value || "").trim();
     const deck = newDeck({ name, cards: p.cards, commanders: cmds, printedNow: !!($("#n-printed") || {}).checked });
     const link = ($("#n-link").value || "").trim(); if (/^https?:\/\//i.test(link)) deck.link = link;
+    const desc = (($("#n-desc") || {}).value || "").trim(); if (desc) deck.desc = desc;
     save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); toast(deck.printed.length ? "Deck created and marked as printed." : "Deck created. Mark cards as printed once you have them.");
     return;
   }
@@ -1435,6 +1578,7 @@ document.addEventListener("click", e => {
     const dd = S.decks.get(S.dialog.id);
     dd.name = ($("#e-name").value || "").trim() || dd.name;
     const link = ($("#e-link").value || "").trim(); if (!link) delete dd.link; else if (/^https?:\/\//i.test(link)) dd.link = link;
+    const desc = (($("#e-desc") || {}).value || "").trim(); if (desc) dd.desc = desc; else delete dd.desc;
     dd.commanders = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value);
     dd.updatedAt = Date.now(); save(dd); closeDialog(); render(); return;
   }
@@ -1463,6 +1607,8 @@ document.addEventListener("change", e => {
   if (e.target.id === "e-artcard" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); if (e.target.value === "__none") dd.artOff = true; else { dd.artOff = false; dd.artCard = e.target.value; } save(dd); render(); renderDialog(); return; }
   if (e.target.id === "e-artpos" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); dd.artPos = e.target.value; save(dd); render(); renderDialog(); return; }
   if (e.target.id === "del-keep" && S.dialog) S.dialog.keep = e.target.checked;
+  if ((e.target.id === "cmp-a" || e.target.id === "cmp-b") && S.cmp) { S.cmp[e.target.id.slice(4)] = e.target.value; const id = e.target.id; render(); const el = $("#" + id); if (el) el.focus(); return; }
+  if (e.target.id === "h-date") S.histDate = e.target.value;
   if (e.target.id === "n-printed" && S.dialog) S.dialog.printedNow = e.target.checked;
   if (e.target.name === "n-cmd" && S.dialog) { S.dialog.cmdTouched = true; S.dialog.cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value); }
 });
@@ -1476,6 +1622,7 @@ document.addEventListener("input", e => {
   if (id === "n-list" && S.dialog) { S.dialog.text = e.target.value; return updateNewParse(); }
   if (id === "n-name" && S.dialog) S.dialog.name = e.target.value;
   if (id === "n-link" && S.dialog) S.dialog.link = e.target.value;
+  if (id === "n-desc" && S.dialog) S.dialog.desc = e.target.value;
   if (id === "ba-list" && S.dialog) { S.dialog.text = e.target.value; return updateBinAdd(); }
   if (id === "ba-search") return showBaSugg(e.target.value);
   if (id === "u-list" && S.dialog) { S.dialog.text = e.target.value; return updateDiff(); }

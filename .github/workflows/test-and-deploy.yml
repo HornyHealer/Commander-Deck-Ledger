@@ -89,7 +89,7 @@ jobs:
           cp -r index.html css js data _site/
           # Tag the code and style links with this update's version so browsers fetch the new files.
           v="${GITHUB_SHA::7}"
-          sed -i -E "s#(css/style\.css|js/firebase-config\.js|js/app\.js)\"#\1?v=$v\"#g" _site/index.html
+          sed -i -E "s#(css/style\.css|js/firebase-config\.js|js/card-rules\.js|js/app\.js)\"#\1?v=$v\"#g" _site/index.html
           grep -c "?v=$v" _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

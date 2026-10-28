@@ -5,7 +5,9 @@
 //   [name, manaCost, typeCode, colorIdentity, flags, oracleId, pairCode, copyLimit?]
 //   manaCost   "2 W U", hybrids as "G/U", split cards as "1 R // 1 U"
 //   typeCode   C creature, P planeswalker, B battle, L land, I instant, S sorcery, A artifact, E enchantment, O other
-//   flags      1 can be a commander, 2 banned in Commander, 4 Game Changer, 8 not legal in Commander
+//   flags      1 can be a commander, 2 banned in Commander, 4 Game Changer, 8 not legal in Commander,
+//              16 extra turns, 32 mass land denial, and suggested roles: 64 ramp, 128 draw, 256 removal,
+//              512 board wipe, 1024 tutor (read from the card's text by js/card-rules.js)
 //   oracleId   Scryfall's permanent ID for the card (the same across every printing and any rename)
 //   pairCode   how it pairs as a second commander: P partner, PW:<name> partner with, PV:<kind> partner variant,
 //              FF friends forever, CB choose a Background, BG is a Background, DC Doctor's companion, TD Time Lord Doctor
@@ -14,11 +16,14 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
-export const FLAG = { COMMANDER: 1, BANNED: 2, GAME_CHANGER: 4, NOT_LEGAL: 8 };
+// The text-reading rules are shared with the website, so lookups made in the browser match this list.
+const rules = createRequire(import.meta.url)('../js/card-rules.js');
+export const FLAG = rules.FLAG;
+export const { pairCode, copyLimit, textFlags } = rules;
 const SKIP_LAYOUTS = new Set(['token', 'double_faced_token', 'emblem', 'art_series', 'vanguard', 'scheme', 'planar', 'augment', 'host']);
 const TYPE_CODES = [['Creature', 'C'], ['Planeswalker', 'P'], ['Battle', 'B'], ['Land', 'L'], ['Instant', 'I'], ['Sorcery', 'S'], ['Artifact', 'A'], ['Enchantment', 'E']];
-const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 };
 
 export const cost = s => String(s || '').split(' // ').map(face => (face.match(/\{([^}]+)\}/g) || []).map(x => x.slice(1, -1)).join(' ')).join(' // ');
 
@@ -26,29 +31,6 @@ export function typeCode(typeLine) {
   const words = String(typeLine || '').split(' // ')[0].split(/[\s—-]+/);
   for (const [w, code] of TYPE_CODES) if (words.includes(w)) return code;
   return 'O';
-}
-
-export function pairCode(text, typeLine) {
-  const t = String(text || '');
-  let m;
-  if ((m = t.match(/\bPartner with ([^\n(]+?)\s*(?:\(|$)/m))) return 'PW:' + m[1].trim();
-  if ((m = t.match(/^Partner\s*[—-]\s*([^\n(]+?)\s*(?:\(|$)/m))) return 'PV:' + m[1].trim();
-  if (/^Partner\s*(?:\(|$)/m.test(t)) return 'P';
-  if (/^Friends forever\b/m.test(t)) return 'FF';
-  if (/\bChoose a Background\b/i.test(t)) return 'CB';
-  if (/\bDoctor's companion\b/i.test(t)) return 'DC';
-  const tl = String(typeLine || '');
-  if (/\bBackground\b/.test(tl.split(' // ')[0])) return 'BG';
-  if (/\bTime Lord Doctor\b/.test(tl)) return 'TD';
-  return '';
-}
-
-export function copyLimit(text) {
-  const t = String(text || '');
-  if (/A deck can have any number of cards named/i.test(t)) return -1;
-  const m = t.match(/A deck can have up to (\w+) cards named/i);
-  if (m) return NUMBER_WORDS[m[1].toLowerCase()] || parseInt(m[1], 10) || 0;
-  return 0;
 }
 
 export function toRecord(c) {
@@ -71,8 +53,10 @@ export function toRecord(c) {
   if (legal === 'banned') flags |= FLAG.BANNED;
   if (legal === 'not_legal') flags |= FLAG.NOT_LEGAL;
   if (c.game_changer === true) flags |= FLAG.GAME_CHANGER;
+  const code = typeCode(typeLine);
+  flags |= textFlags(text, code);
   const ci = 'WUBRG'.split('').filter(x => (c.color_identity || []).includes(x)).join('');
-  const rec = [name, cost(manaCost), typeCode(typeLine), ci, flags, c.oracle_id || '', pairCode(text, frontType)];
+  const rec = [name, cost(manaCost), code, ci, flags, c.oracle_id || '', pairCode(text, frontType)];
   const limit = copyLimit(text);
   if (limit) rec.push(limit);
   return rec;
