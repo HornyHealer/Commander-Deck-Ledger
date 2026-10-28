@@ -346,6 +346,7 @@ function undoLast(d) {
     if (e.fromList) { const cm = curMap(d); for (const x of e.fromList) cm.set(x.n, (cm.get(x.n) || 0) + x.q); const order = d.cur.map(c => c.n); for (const n of cm.keys()) if (!order.includes(n)) order.push(n); d.cur = order.map(n => ({ n, q: cm.get(n) })); }
     d.log.pop(); d.updatedAt = Date.now(); return;
   }
+  if (e.xfer) { const pt = xferPartner(e); undoEntry(d, e); if (pt) { undoEntry(pt.deck, pt.entry); save(pt.deck); } return; }
   undoEntry(d, e);
   // Undoing an arrival also undoes its swap and puts the cards back on the incoming list.
   let sw = e.inc ? e : null;
@@ -364,7 +365,37 @@ function undoEntry(d, e) {
   if (e.kind === "print") for (const c of e.cards || []) { const p = d.printed.find(y => y.n === c.n); if (p) { p.q -= c.q; if (p.q <= 0) d.printed = d.printed.filter(y => y !== p); } }
   for (const c of e.got || []) { const p = d.printed.find(y => y.n === c.n); if (p) { p.q -= c.q; if (p.q <= 0) d.printed = d.printed.filter(y => y !== p); } }
   if (e.kind === "unprint") for (const c of e.cards || []) { const p = d.printed.find(y => y.n === c.n); if (p) p.q += c.q; else d.printed.push({ n: c.n, q: c.q, at: c.at || Date.now(), o: c.o ?? 1 }); }
-  d.log.pop(); d.updatedAt = Date.now();
+  for (const c of e.lost || []) { const p = d.printed.find(y => y.n === c.n); if (p) p.q += c.q; else d.printed.push({ n: c.n, q: c.q, at: c.at || Date.now(), o: c.o ?? 1 }); }
+  d.log = d.log.filter(x => x !== e); d.updatedAt = Date.now();
+}
+
+// ---------- moving cards between decks ----------
+// Cuts cards from one deck (and its owned list) and adds them to another as owned. Both decks log the move
+// with a shared id, so undoing it from either deck reverses both sides.
+function transferCards(src, dst, items) {
+  items = items.filter(x => x.q > 0); if (!items.length) return 0;
+  const xid = uid();
+  applyChange(src, items, [], "", "swap");
+  const se = src.log[src.log.length - 1]; se.xfer = { id: xid, to: { id: dst.id, name: dst.name } };
+  const lost = [];
+  for (const x of items) {
+    const p = src.printed.find(y => y.n === x.n); if (!p) continue;
+    const take = Math.min(p.q, x.q); if (take <= 0) continue;
+    lost.push({ n: x.n, q: take, at: p.at, o: p.o }); p.q -= take;
+    if (p.q <= 0) src.printed = src.printed.filter(y => y !== p);
+  }
+  if (lost.length) se.lost = lost;
+  applyChange(dst, [], items, "", "swap");
+  const de = dst.log[dst.log.length - 1]; de.xfer = { id: xid, from: { id: src.id, name: src.name } };
+  ownNew(dst, de, items);
+  save(src); save(dst); return qsum(items);
+}
+// The other deck's half of a move, if that deck still exists and still has it.
+function xferPartner(e) {
+  if (!e || !e.xfer) return null;
+  const other = S.decks.get((e.xfer.to || e.xfer.from || {}).id); if (!other) return null;
+  const pe = other.log.find(x => x.xfer && x.xfer.id === e.xfer.id && x !== e);
+  return pe ? { deck: other, entry: pe } : null;
 }
 
 // ---------- incoming: changes waiting for their cards to arrive ----------
@@ -1356,13 +1387,15 @@ function renderHistory(d) {
     const latest = k === 0 && e.kind !== "create";
     let title;
     const pl = e.cards ? qsum(e.cards) : 0; const s = pl > 1 ? "s" : "";
-    if (e.kind === "create") title = `Deck created with ${e.count} cards`;
+    if (e.kind === "create") title = `Deck created with ${e.count} card${e.count === 1 ? "" : "s"}`;
     else if (e.kind === "incoming") { const ni = qsum(e.in || []); title = e.fromList ? `Moved ${ni} card${ni === 1 ? "" : "s"} not owned yet to incoming` : `Marked ${ni} card${ni === 1 ? "" : "s"} as incoming`; }
     else if (e.kind === "print" && e.arrival) title = `Arrived: ${pl} card${s} added to owned`;
     else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(esc).join(", ") + ")" : ""}` : `Added ${pl} card${s} to owned`;
     else if (e.kind === "unprint") title = e.to ? `Moved ${pl} owned card${s} to ${esc(e.to.name)}` : `Removed ${pl} card${s} from owned`;
+    else if (e.xfer) { const nq = qsum(e.out || []) + qsum(e.in || []); title = e.xfer.to ? `Moved ${nq} card${nq === 1 ? "" : "s"} to ${esc(e.xfer.to.name)}` : `Took ${nq} card${nq === 1 ? "" : "s"} from ${esc(e.xfer.from.name)}`; }
     else title = changeTitle(e) + (e.inc ? `<span class="flag plain">Incoming since ${fmtShort(e.inc.t)}</span>` : "");
-    const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">Undo this change? <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
+    const pt = latest && e.xfer ? xferPartner(e) : null;
+    const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">${pt ? `Undo this move? It's also undone in ${esc(pt.deck.name)}.` : "Undo this change?"} <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
     const view = e.kind === "create" || isChange(e) ? `<button class="btn sm ghost" data-snap="${e.kind === "create" ? "start" : esc(e.id)}">${e.kind === "create" ? "View original list" : "View deck after this"}</button>` : "";
     return `<div class="entry"><div class="when">${fmtDate(e.t)}</div><div class="what"><div class="kind">${title}${undo}${view}</div>${e.kind === "create" ? "" : e.cards ? `<div class="plines ${e.kind}">${e.cards.map(c => `<span>${c.q}x ${esc(c.n)}</span>`).join("")}</div>` : swapLines(e)}${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}</div></div>`;
   }).join("")}</div>`;
@@ -1489,6 +1522,7 @@ function renderDialog() {
       <div id="n-parse"></div>
       <label class="f"><span class="label">Still waiting on (optional)</span><textarea class="field short" id="n-wait" placeholder="1 Rhystic Study&#10;1 Smothering Tithe">${esc(dl.wait || "")}</textarea><span class="fhint">Cards from the list you don't have yet, one per line. They're kept out of the deck as an incoming change until they arrive.</span></label>
       ${dl.fromCheck && dl.fromCheck.bin.length ? `<label class="checkline"><input type="checkbox" id="n-takebin" ${dl.takeBin === false ? "" : "checked"}> Take the ${qsum(dl.fromCheck.bin)} card${qsum(dl.fromCheck.bin) > 1 ? "s" : ""} found in the card bin out of the bin and into this deck</label>` : ""}
+      ${dl.fromCheck && dl.fromCheck.decks && dl.fromCheck.decks.length ? `<div class="takedecks"><label class="checkline"><input type="checkbox" id="n-takedecks" ${dl.takeDecks ? "checked" : ""}> Take the ${qsum(dl.fromCheck.decks)} card${qsum(dl.fromCheck.decks) > 1 ? "s" : ""} owned in other decks out of those decks</label><span class="fhint">${dl.fromCheck.decks.map(x => `${x.q > 1 ? x.q + "x " : ""}${esc(x.n)} from ${esc(x.name)}`).join(" · ")}. Each move shows in both decks' history and can be undone from either one.</span></div>` : ""}
     </div>
     <footer><span class="grow">The cards you have are saved as the deck's original list.</span><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="create">Create deck</button></footer></div>`;
   } else if (dl.kind === "edit") {
@@ -1708,7 +1742,9 @@ document.addEventListener("click", e => {
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
   if (act === "chk-create") {
     const rows = S.checkRows || []; const need = rows.filter(r => r.need); const bin = rows.filter(r => r.fromBin);
-    return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, wait: need.map(r => `${r.need}x ${r.n}`).join("\n"), fromCheck: { bin: bin.map(r => ({ n: r.n, q: r.fromBin })) }, takeBin: true });
+    const decks = []; // which deck each card would come from, first deck first
+    for (const r of rows.filter(x => x.fromDecks)) { let left = r.fromDecks; for (const x of r.decks) { if (!left) break; const q = Math.min(x.q, left); decks.push({ n: r.n, q, id: x.id, name: x.name }); left -= q; } }
+    return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, wait: need.map(r => `${r.need}x ${r.n}`).join("\n"), fromCheck: { bin: bin.map(r => ({ n: r.n, q: r.fromBin })), decks }, takeBin: true, takeDecks: false });
   }
   if (act === "facet-clear") { S.allTypes = new Set(); S.allColors = new Set(); return render(); }
   if (act === "copy-all") { if ($(".menu")) render(); return copyText((S.allShown || []).filter(x => x.q > 0).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Card list"); }
@@ -1730,7 +1766,7 @@ document.addEventListener("click", e => {
   if (act === "unprint-no" || act === "binrm-no") { S.confirm = null; return render(); }
   if (act === "copy-toprint" && d) { if ($(".menu")) render(); return copyText(incomingNeeds(d).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming cards"); }
   if (act === "undo-no") { S.confirm = null; return render(); }
-  if (act === "undo-yes" && d) { undoLast(d); S.confirm = null; save(d); render(); return toast("Change undone."); }
+  if (act === "undo-yes" && d) { const last = d.log[d.log.length - 1]; const pt = last && last.xfer ? xferPartner(last) : null; undoLast(d); S.confirm = null; save(d); render(); return toast(pt ? `Move undone here and in ${pt.deck.name}.` : "Change undone."); }
   const dlg = t.dataset.dlg; if (!dlg) return;
   if (dlg === "close") return closeDialog();
   if (dlg === "create") {
@@ -1739,17 +1775,24 @@ document.addEventListener("click", e => {
     const cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value);
     const name = ($("#n-name").value || "").trim();
     const wait = parseList(($("#n-wait") || {}).value || "").cards;
-    const left = new Map(p.cards.map(c => [c.n, c.q])); for (const w of wait) { const v = (left.get(w.n) || 0) - w.q; if (v > 0) left.set(w.n, v); else left.delete(w.n); }
+    const fc = S.dialog.fromCheck; const steal = fc && fc.decks && ($("#n-takedecks") || {}).checked ? fc.decks : [];
+    const left = new Map(p.cards.map(c => [c.n, c.q])); for (const w of [...wait, ...steal]) { const v = (left.get(w.n) || 0) - w.q; if (v > 0) left.set(w.n, v); else left.delete(w.n); }
     const deck = newDeck({ name, cards: p.cards.filter(c => left.has(c.n)).map(c => ({ n: c.n, q: left.get(c.n) })), commanders: cmds });
     if (wait.length) { const now = Date.now() + 1, id = uid(); deck.incoming = [{ id, t: now, out: [], in: wait }]; deck.log.push({ id, t: now, kind: "incoming", out: [], in: wait }); }
     const link = ($("#n-link").value || "").trim(); if (/^https?:\/\//i.test(link)) deck.link = link;
     const desc = (($("#n-desc") || {}).value || "").trim(); if (desc) deck.desc = desc;
-    let fromBin = 0;
+    let fromBin = 0, moved = 0;
+    if (steal.length) {
+      S.decks.set(deck.id, deck); const bySrc = new Map();
+      for (const x of steal) { if (!bySrc.has(x.id)) bySrc.set(x.id, []); bySrc.get(x.id).push({ n: x.n, q: x.q }); }
+      for (const [id, items] of bySrc) { const src = S.decks.get(id); if (src) { const have = curMap(src); moved += transferCards(src, deck, items.map(x => ({ n: x.n, q: Math.min(x.q, have.get(x.n) || 0) }))); } }
+      deck.commanders = cmds.filter(n => curMap(deck).has(n) || p.cards.some(c => c.n === n));
+    }
     if (S.dialog.fromCheck && ($("#n-takebin") || {}).checked) {
       const owned = curMap(deck); S.decks.set(deck.id, deck);
       for (const x of S.dialog.fromCheck.bin) { const q = Math.min(x.q, owned.get(x.n) || 0); if (q) fromBin += pullFromBin(x.n, q, deck).got; }
     }
-    save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); if (fromBin) { toast(`Deck created. ${fromBin} card${fromBin > 1 ? "s" : ""} moved out of the card bin${wait.length ? `, and ${qsum(wait)} waiting as incoming` : ""}.`); return; } toast(wait.length ? `Deck created. ${qsum(wait)} card${qsum(wait) > 1 ? "s are" : " is"} waiting as incoming; press Arrived when they're in hand.` : "Deck created.");
+    save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); if (fromBin || moved) { const parts = [fromBin ? `${fromBin} from the card bin` : "", moved ? `${moved} from other decks` : ""].filter(Boolean).join(" and "); toast(`Deck created with ${parts}${wait.length ? `; ${qsum(wait)} waiting as incoming` : ""}.`); return; } toast(wait.length ? `Deck created. ${qsum(wait)} card${qsum(wait) > 1 ? "s are" : " is"} waiting as incoming; press Arrived when they're in hand.` : "Deck created.");
     return;
   }
   if (dlg === "save-edit") {
@@ -1786,6 +1829,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "e-artpos" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); dd.artPos = e.target.value; save(dd); render(); renderDialog(); return; }
   if (e.target.id === "del-keep" && S.dialog) S.dialog.keep = e.target.checked;
   if (e.target.id === "n-takebin" && S.dialog) S.dialog.takeBin = e.target.checked;
+  if (e.target.id === "n-takedecks" && S.dialog) S.dialog.takeDecks = e.target.checked;
   if ((e.target.id === "cmp-a" || e.target.id === "cmp-b") && S.cmp) { S.cmp[e.target.id.slice(4)] = e.target.value; const id = e.target.id; render(); const el = $("#" + id); if (el) el.focus(); return; }
   if (e.target.id === "h-date") S.histDate = e.target.value;
   if (e.target.name === "n-cmd" && S.dialog) { S.dialog.cmdTouched = true; S.dialog.cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value); }

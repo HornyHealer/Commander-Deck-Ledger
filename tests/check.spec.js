@@ -71,3 +71,71 @@ test('creates a deck from the checked list, taking bin cards and waiting on the 
   await page.click('[data-tab="history"]');
   await expect(page.locator('.hist .entry').first()).toContainText('Moved 1 owned card to Goblin Time');
 });
+
+async function createTaking(page) {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Lightning Bolt\n1 Rhystic Study');
+  await page.click('[data-act="chk-create"]');
+  await expect(page.locator('#n-takedecks')).not.toBeChecked();
+  await expect(page.locator('.takedecks')).toContainText('Lightning Bolt from Fixture Zagras');
+  await page.check('#n-takedecks');
+  await page.fill('#n-name', 'Goblin Time');
+  await page.click('[data-dlg="create"]');
+  await expect(page.locator('.dhead .dn')).toContainText('Goblin Time');
+}
+const deckRow = (page, n) => page.locator('.groups .row', { has: page.locator('.nm > span:first-child', { hasText: new RegExp('^' + n + '$') }) });
+
+test('creating from a check can take cards from other decks, logged in both decks', async ({ page }) => {
+  await createTaking(page);
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('Took 1 card from Fixture Zagras');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(0);
+  await page.click('[data-tab="printed"]');
+  await expect(page.locator('.plist .row', { hasText: 'Lightning Bolt' })).toHaveCount(0);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('Moved 1 card to Goblin Time');
+  // Not left in the card bin either: the card moved, it wasn't cut.
+  await page.click('[data-act="home"]');
+  await expect(page.locator('.bin .row', { hasText: 'Lightning Bolt' })).toHaveCount(0);
+});
+
+test('undoing the move from the deck it left puts the card back and clears both histories', async ({ page }) => {
+  await createTaking(page);
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-tab="history"]');
+  await page.click('[data-act="undo"]');
+  await expect(page.locator('.hist .confirm')).toContainText('also undone in Goblin Time');
+  await page.click('[data-act="undo-yes"]');
+  await expect(page.locator('.hist .entry').first()).not.toContainText('Goblin Time');
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await page.click('[data-tab="printed"]');
+  await expect(page.locator('.plist .row', { hasText: 'Lightning Bolt' })).toContainText('In deck');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Goblin Time' }).click();
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(0);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist')).not.toContainText('Fixture Zagras');
+});
+
+test('undoing the move from the new deck works the same way', async ({ page }) => {
+  await createTaking(page);
+  await page.click('[data-tab="history"]');
+  await page.click('[data-act="undo"]');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(0);
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist')).not.toContainText('Goblin Time');
+  // The move is gone for good: still not there after a reload.
+  await page.reload();
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist')).not.toContainText('Goblin Time');
+});
