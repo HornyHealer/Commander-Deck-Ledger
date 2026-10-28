@@ -201,3 +201,28 @@ test('cards not marked owned in an older backup become an incoming change', asyn
   await page.click('[data-tab="history"]');
   await expect(page.locator('.hist .entry').first()).toContainText('not owned yet to incoming');
 });
+
+test('card names link to Scryfall and deck names in history open that deck', async ({ page }, info) => {
+  await importBackup(page);
+  await openDeck(page, 'Rat Pack');
+  const link = page.locator('.groups .row .cname', { hasText: 'Sol Ring' });
+  await expect(link).toHaveAttribute('href', /scryfall\.com\/search\?q=.*Sol%20Ring/);
+  await expect(page.locator('.row .acts a.iconbtn')).toHaveCount(0);
+  if (info.project.name === 'phone') {
+    // On a phone, a tap shows the picture first, with the Scryfall link inside it.
+    await link.tap();
+    await expect(page.locator('.cardpv.tap .pv-link')).toHaveAttribute('href', /Sol%20Ring/);
+  }
+});
+
+test('deck names in history open that deck @phone', async ({ page }) => {
+  await importBackup(page);
+  // Fixture Zagras has a spare Typhoid Rats; moving it logs the other deck's name in both histories.
+  await page.locator('.bin').getByRole('button', { name: 'Move to Rat Pack' }).click();
+  await openDeck(page, 'Fixture Zagras');
+  await page.click('[data-tab="history"]');
+  await page.locator('.hist .entry').first().locator('.deckref', { hasText: 'Rat Pack' }).click();
+  await expect(page.locator('.dhead .dn')).toContainText('Rat Pack');
+  await page.locator('.hist .entry').first().locator('.deckref', { hasText: 'Fixture Zagras' }).click();
+  await expect(page.locator('.dhead .dn')).toContainText('Fixture Zagras');
+});

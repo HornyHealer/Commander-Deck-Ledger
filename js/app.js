@@ -59,6 +59,10 @@ const fmtDate = t => new Date(t).toLocaleDateString(undefined, { month: "short",
 const fmtShort = t => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const clone = o => JSON.parse(JSON.stringify(o));
 const scry = n => "https://scryfall.com/search?q=" + encodeURIComponent('!"' + n + '"');
+// A card's name, linked to its Scryfall page (on phones a tap shows the picture first, with the link in it).
+const cardLink = n => `<a class="cname" href="${scry(n)}" target="_blank" rel="noopener" draggable="false">${esc(n)}</a>`;
+// A deck's name that opens that deck, or plain text if the deck is gone.
+const deckLink = ref => { if (!ref) return ""; const dk = ref.id ? S.decks.get(ref.id) : [...S.decks.values()].find(x => x.name === ref.name); return dk ? `<button class="deckref" data-open="${esc(dk.id)}" title="Open ${esc(dk.name)}">${esc(ref.name || dk.name)}</button>` : esc(ref.name || ""); };
 const MANA_ORDER = "WUBRG";
 
 const ICONS = {
@@ -281,7 +285,7 @@ function checkResults() {
   const nBin = tot("fromBin"), nDeck = tot("fromDecks"), nNeed = tot("need"), all = qsum(rows);
   const list = (arr, fn) => arr.length ? arr.sort((a, b) => a.n.localeCompare(b.n)).map(fn).join("") : "";
   const rc = r => { const x = rec(r.n); return x ? pipsFor(x[1]) : "<span></span>"; };
-  const line = (r, q, sub, flags = "") => `<div class="row"><span class="q">${q}</span><span class="nm"><span>${esc(r.n)}</span>${flags}${sub ? `<small>${sub}</small>` : ""}</span>${rc(r)}<span class="acts"><a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+  const line = (r, q, sub, flags = "") => `<div class="row"><span class="q">${q}</span><span class="nm"><span>${cardLink(r.n)}</span>${flags}${sub ? `<small>${sub}</small>` : ""}</span>${rc(r)}<span class="acts"></span></div>`;
   const binL = list(rows.filter(r => r.fromBin), r => line(r, r.fromBin, [...new Set(r.binFrom)].map(x => x === "Added directly" ? "Added to the bin" : "Spare from " + esc(x)).join(" · "), r.binInc ? `<span class="flag leaving">Incoming for ${esc([...new Set(r.binInc)].join(", "))}</span>` : ""));
   const deckL = list(rows.filter(r => r.fromDecks), r => line(r, r.fromDecks, "In " + r.decks.map(x => esc(x.name) + (x.q > 1 ? ` ×${x.q}` : "")).join(", ")));
   const needL = list(rows.filter(r => r.need), r => line(r, r.need, r.incoming.length ? "Already incoming for " + r.incoming.map(esc).join(", ") : "", !rec(r.n) ? '<span class="flag warn">Unrecognized</span>' : ""));
@@ -812,7 +816,7 @@ function cardNameFrom(el) {
 }
 let pv = null, pvTimer = null, pvFor = null;
 function pvEl() {
-  if (!pv) { pv = document.createElement("div"); pv.className = "cardpv"; pv.hidden = true; pv.innerHTML = '<img alt="">'; document.body.appendChild(pv); pv.querySelector("img").addEventListener("error", () => { pv.hidden = true; }); }
+  if (!pv) { pv = document.createElement("div"); pv.className = "cardpv"; pv.hidden = true; pv.innerHTML = '<img alt=""><a class="pv-link" target="_blank" rel="noopener" hidden>Open on Scryfall ↗</a>'; document.body.appendChild(pv); pv.querySelector("img").addEventListener("error", () => { pv.hidden = true; }); }
   return pv;
 }
 function placePv(x, y) {
@@ -845,10 +849,12 @@ if (canHover) {
   document.addEventListener("scroll", () => { if (pv) pv.hidden = true; pvFor = null; }, true);
 } else {
   document.addEventListener("click", e => {
-    if (pv && !pv.hidden) { pv.hidden = true; pv.classList.remove("tap"); return; }
+    if (pv && !pv.hidden) { if (e.target.closest(".pv-link")) { setTimeout(() => { pv.hidden = true; pv.classList.remove("tap"); }, 0); return; } e.preventDefault(); pv.hidden = true; pv.classList.remove("tap"); return; }
     const el = e.target.closest && e.target.closest(".row .nm > span:first-child"); if (!el) return;
     const n = cardNameFrom(el); if (!n) return;
-    const p = pvEl(); p.classList.add("tap"); const img = p.querySelector("img"); img.src = imgUrl(n); img.alt = n; p.style.left = ""; p.style.top = ""; p.hidden = false;
+    e.preventDefault(); // show the picture first; its link opens Scryfall
+    const p = pvEl(); p.classList.add("tap"); const img = p.querySelector("img"); img.src = imgUrl(n); img.alt = n; p.style.left = ""; p.style.top = "";
+    const a = p.querySelector(".pv-link"); a.href = scry(n); a.hidden = false; p.hidden = false;
   });
 }
 
@@ -974,7 +980,7 @@ function renderAll() {
       const rc = rec(r.n);
       const where = [...r.inDecks.map(x => `<button class="deckref" data-open="${esc(x.id)}">${esc(x.name)}${x.q > 1 ? " ×" + x.q : ""}</button>`), r.bin ? `<span>Bin${r.bin > 1 ? " ×" + r.bin : ""}</span>` : ""].filter(Boolean).join("");
       const flags = (r.toPrint ? `<span class="flag leaving">${r.toPrint} incoming</span>` : "") + (!r.inDecks.length && r.bin ? '<span class="flag plain">Bin only</span>' : "") + (!rc ? '<span class="flag warn">Unrecognized</span>' : "");
-      return `<div class="row"><span class="q">${qOf(r)}</span><span class="nm"><span>${esc(r.n)}</span>${flags}<small class="where">${r.printed ? `${r.printed} owned` : "Not owned yet"}${where ? " · " : ""}${where}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts"><a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+      return `<div class="row"><span class="q">${qOf(r)}</span><span class="nm"><span>${cardLink(r.n)}</span>${flags}<small class="where">${r.printed ? `${r.printed} owned` : "Not owned yet"}${where ? " · " : ""}${where}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts"></span></div>`;
     }).join("")}</div>`;
   }
   return h + `</div>`;
@@ -1078,7 +1084,7 @@ function renderBin() {
     const lq = r.srcs.filter(s => s.loose).reduce((a, s) => a + s.q, 0);
     const rm = lq ? (S.confirm === "binrm|" + r.n ? `<span class="confirm" style="margin-top:4px">Throw out ${lq} cop${lq > 1 ? "ies" : "y"} not tied to a deck? <button class="btn sm danger" data-binrm-yes="${esc(r.n)}">Throw out</button><button class="btn sm ghost" data-act="binrm-no">Keep</button></span>` : `<button class="iconbtn" title="Throw out copies not tied to a deck" aria-label="Throw out ${esc(r.n)} from the bin" data-binrm="${esc(r.n)}">${ICONS.x}</button>`) : "";
     const moves = r.needs.map(nd => `<button class="btn sm" data-binmove="${esc(JSON.stringify([r.n, nd.id]))}">Move to ${esc(nd.name)}</button>`).join("");
-    return `<div class="row"><span class="q">${r.total}</span><span class="nm"><span>${esc(r.n)}</span>${r.needs.length ? '<span class="flag good">Needed</span>' : ""}${r.inc ? `<span class="flag leaving" title="Part of an incoming change">Incoming for ${esc([...new Set(r.inc)].join(", "))}</span>` : ""}<small>${from}</small>${moves ? `<span class="bin-moves">${moves}</span>` : ""}${rm && S.confirm === "binrm|" + r.n ? rm : ""}</span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${rm && S.confirm !== "binrm|" + r.n ? rm : ""}<a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+    return `<div class="row"><span class="q">${r.total}</span><span class="nm"><span>${cardLink(r.n)}</span>${r.needs.length ? '<span class="flag good">Needed</span>' : ""}${r.inc ? `<span class="flag leaving" title="Part of an incoming change">Incoming for ${esc([...new Set(r.inc)].join(", "))}</span>` : ""}<small>${from}</small>${moves ? `<span class="bin-moves">${moves}</span>` : ""}${rm && S.confirm === "binrm|" + r.n ? rm : ""}</span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${rm && S.confirm !== "binrm|" + r.n ? rm : ""}</span></div>`;
   };
   h += `<div class="groups bin-list">`;
   for (const g of TYPE_ORDER) {
@@ -1225,7 +1231,7 @@ function renderSnapshot(d) {
     for (const c of arr) {
       const r = rec(c.n); const have = now.get(c.n) || 0;
       const fl = have >= c.q ? "" : have ? `<span class="flag plain">${have} in deck now</span>` : '<span class="flag plain">Not in deck now</span>';
-      h += `<div class="row"><span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${fl}</span>${r ? pipsFor(r[1]) : "<span></span>"}<span class="acts"><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+      h += `<div class="row"><span class="q">${c.q}</span><span class="nm"><span>${cardLink(c.n)}</span>${fl}</span>${r ? pipsFor(r[1]) : "<span></span>"}<span class="acts"></span></div>`;
     }
     h += `</div>`;
   }
@@ -1329,8 +1335,8 @@ function renderCurrent(d) {
       const rtags = roles.length ? `<span class="rtags">${roles.map(x => `<span class="rtag">${ROLE_NAME[x] || esc(x)}</span>`).join("")}</span>` : "";
       const redit = editing ? `<span class="roleedit" role="group" aria-label="Roles for ${esc(c.n)}">${ROLES.map(([id, l]) => `<button class="chip sm${roles.includes(id) ? " on" : ""}" aria-pressed="${roles.includes(id)}" data-roletoggle="${esc(JSON.stringify([c.n, id]))}">${ROLE_NAME[id]}</button>`).join("")}${d.roles && d.roles[roleKey(c)] ? `<button class="btn sm ghost" data-rolereset="${esc(c.n)}">Use suggested</button>` : ""}<button class="btn sm" data-act="role-done">Done</button></span>` : "";
       h += `<div class="row${st ? " staged-out" : ""}${editing ? " editing" : ""}" draggable="true" data-drag="cur" data-name="${esc(c.n)}">
-        <span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${flags}${rtags}${redit}</span>${r ? pipsFor(r[1]) : "<span></span>"}
-        <span class="acts"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button><button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" title="Open on Scryfall" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+        <span class="q">${c.q}</span><span class="nm"><span>${cardLink(c.n)}</span>${flags}${rtags}${redit}</span>${r ? pipsFor(r[1]) : "<span></span>"}
+        <span class="acts"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button><button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button></span></div>`;
     }
     h += `</div>`;
   }
@@ -1346,8 +1352,8 @@ function renderRemoved(d, removed) {
     const sub = e ? `Cut ${fmtShort(e.t)}${repl ? " · " + repl : ""}` : "Out of the current list";
     const staged = d.bench.in.some(i => i.n === r.n) ? "Coming back" : incomingOf(d).some(b => b.in.some(i => i.n === r.n)) ? "Incoming" : "";
     return `<div class="row" draggable="true" data-drag="removed" data-name="${esc(r.n)}"><span class="q">${r.q}</span>
-      <span class="nm"><span>${esc(r.n)}</span>${staged ? `<span class="flag ${staged === "Incoming" ? "leaving" : "good"}">${staged}</span>` : ""}${r.printed ? "" : (() => { for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if (e.kind === "unprint" && e.cards.some(c => c.n === r.n)) return e.to ? `<span class="flag plain">Moved to ${esc(e.to.name)}</span>` : '<span class="flag plain">Taken off owned</span>'; } return '<span class="flag plain">Never owned</span>'; })()}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}
-      <span class="acts" style="opacity:1"><button class="iconbtn" title="Bring back" aria-label="Bring ${esc(r.n)} back" data-bringback="${esc(r.n)}">${ICONS.back2}</button><a class="iconbtn" href="${scry(r.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(r.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+      <span class="nm"><span>${cardLink(r.n)}</span>${staged ? `<span class="flag ${staged === "Incoming" ? "leaving" : "good"}">${staged}</span>` : ""}${r.printed ? "" : (() => { for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if (e.kind === "unprint" && e.cards.some(c => c.n === r.n)) return e.to ? `<span class="flag plain">Moved to ${esc(e.to.name)}</span>` : '<span class="flag plain">Taken off owned</span>'; } return '<span class="flag plain">Never owned</span>'; })()}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}
+      <span class="acts" style="opacity:1"><button class="iconbtn" title="Bring back" aria-label="Bring ${esc(r.n)} back" data-bringback="${esc(r.n)}">${ICONS.back2}</button></span></div>`;
   }).join("")}</div>`;
 }
 
@@ -1366,7 +1372,7 @@ function renderPrinted(d) {
     const have = cm.get(p.n) || 0; const rc = rec(p.n);
     const st = have >= p.q ? '<span class="flag good">In deck</span>' : have > 0 ? `<span class="flag warn">${have} of ${p.q} in deck</span>` : '<span class="flag plain">Removed</span>';
     const sub = p.o ? `Added ${fmtShort(p.at)}` : "Original list";
-    return `<div class="row"><span class="q">${p.q}</span><span class="nm"><span>${esc(p.n)}</span>${st}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${S.confirm === "unprint|" + p.n ? `<span class="confirm">Remove? <button class="btn sm danger" data-unprint-yes="${esc(p.n)}">Remove</button><button class="btn sm ghost" data-act="unprint-no">Keep</button></span>` : `<button class="iconbtn" title="Remove from owned" aria-label="Remove ${esc(p.n)} from owned" data-unprint="${esc(p.n)}">${ICONS.x}</button>`}<a class="iconbtn" href="${scry(p.n)}" target="_blank" rel="noopener" aria-label="Open ${esc(p.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
+    return `<div class="row"><span class="q">${p.q}</span><span class="nm"><span>${cardLink(p.n)}</span>${st}<small>${sub}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts">${S.confirm === "unprint|" + p.n ? `<span class="confirm">Remove? <button class="btn sm danger" data-unprint-yes="${esc(p.n)}">Remove</button><button class="btn sm ghost" data-act="unprint-no">Keep</button></span>` : `<button class="iconbtn" title="Remove from owned" aria-label="Remove ${esc(p.n)} from owned" data-unprint="${esc(p.n)}">${ICONS.x}</button>`}</span></div>`;
   }).join("")}</div>`;
   return h;
 }
@@ -1390,9 +1396,9 @@ function renderHistory(d) {
     if (e.kind === "create") title = `Deck created with ${e.count} card${e.count === 1 ? "" : "s"}`;
     else if (e.kind === "incoming") { const ni = qsum(e.in || []); title = e.fromList ? `Moved ${ni} card${ni === 1 ? "" : "s"} not owned yet to incoming` : `Marked ${ni} card${ni === 1 ? "" : "s"} as incoming`; }
     else if (e.kind === "print" && e.arrival) title = `Arrived: ${pl} card${s} added to owned`;
-    else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(esc).join(", ") + ")" : ""}` : `Added ${pl} card${s} to owned`;
-    else if (e.kind === "unprint") title = e.to ? `Moved ${pl} owned card${s} to ${esc(e.to.name)}` : `Removed ${pl} card${s} from owned`;
-    else if (e.xfer) { const nq = qsum(e.out || []) + qsum(e.in || []); title = e.xfer.to ? `Moved ${nq} card${nq === 1 ? "" : "s"} to ${esc(e.xfer.to.name)}` : `Took ${nq} card${nq === 1 ? "" : "s"} from ${esc(e.xfer.from.name)}`; }
+    else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(nm => deckLink({ name: nm })).join(", ") + ")" : ""}` : `Added ${pl} card${s} to owned`;
+    else if (e.kind === "unprint") title = e.to ? `Moved ${pl} owned card${s} to ${deckLink(e.to)}` : `Removed ${pl} card${s} from owned`;
+    else if (e.xfer) { const nq = qsum(e.out || []) + qsum(e.in || []); title = e.xfer.to ? `Moved ${nq} card${nq === 1 ? "" : "s"} to ${deckLink(e.xfer.to)}` : `Took ${nq} card${nq === 1 ? "" : "s"} from ${deckLink(e.xfer.from)}`; }
     else title = changeTitle(e) + (e.inc ? `<span class="flag plain">Incoming since ${fmtShort(e.inc.t)}</span>` : "");
     const pt = latest && e.xfer ? xferPartner(e) : null;
     const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">${pt ? `Undo this move? It's also undone in ${esc(pt.deck.name)}.` : "Undo this change?"} <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
