@@ -188,3 +188,52 @@ test('a card in more than one deck can be taken from the deck you pick', async (
   await page.click('[data-tab="current"]');
   await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
 });
+
+test('a bin card set to incoming can be moved in later, leaving the bin, and undone from either deck', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Arcane Signet\n1 Fervent Champion');
+  await page.click('[data-act="chk-create"]');
+  await page.fill('#n-name', 'Bin Test');
+  await page.click('[data-dlg="create"]');
+  const inc = page.locator('.inc');
+  await expect(inc).toContainText('Arcane Signet');
+  // Arcane Signet was added to the bin directly; Fervent Champion is a spare cut from Fixture Zagras.
+  await inc.locator('[data-binmove]', { hasText: 'Arcane Signet' }).click();
+  await inc.locator('[data-binmove]', { hasText: 'Fervent Champion' }).click();
+  await expect(deckRow(page, 'Arcane Signet')).toHaveCount(1);
+  await expect(deckRow(page, 'Fervent Champion')).toHaveCount(1);
+  await expect(inc).not.toContainText('Arcane Signet');
+  await expect(inc).toContainText('Krenko, Mob Boss');
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').nth(0)).toContainText('Took 1 card from the card bin (Fixture Zagras)');
+  await expect(page.locator('.hist .entry').nth(1)).toContainText('Took 1 card from the card bin (added directly)');
+  await page.click('[data-act="home"]');
+  const bin = page.locator('.bin');
+  await expect(bin.locator('.row', { hasText: 'Fervent Champion' })).toHaveCount(0);
+  await expect(bin.locator('.row', { hasText: 'Arcane Signet' }).locator('.q')).toHaveText('1');
+
+  // Undo the Fervent Champion move from Fixture Zagras, the deck the spare came from.
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('Moved 1 owned card to Bin Test');
+  await page.click('[data-act="undo"]');
+  await expect(page.locator('.hist .confirm')).toContainText('also undone in Bin Test');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-act="home"]');
+  await expect(bin.locator('.row', { hasText: 'Fervent Champion' })).toContainText('From Fixture Zagras');
+  await page.locator('.deckbox', { hasText: 'Bin Test' }).click();
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Fervent Champion')).toHaveCount(0);
+  await expect(inc).toContainText('Fervent Champion');
+
+  // Undo the Arcane Signet move from the new deck: it goes back to the bin and back to incoming.
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('added directly');
+  await page.click('[data-act="undo"]');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Arcane Signet')).toHaveCount(0);
+  await expect(inc).toContainText('Arcane Signet');
+  await page.click('[data-act="home"]');
+  await expect(bin.locator('.row', { hasText: 'Arcane Signet' }).locator('.q')).toHaveText('2');
+});

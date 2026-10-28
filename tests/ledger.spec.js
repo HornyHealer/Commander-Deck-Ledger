@@ -108,9 +108,11 @@ test('cards can be added straight to the bin and moved into a deck that needs th
   // Fixture Zagras has a spare Typhoid Rats, which Rat Pack's incoming change needs.
   await expect(bin).toContainText('needed by an incoming change');
   await bin.getByRole('button', { name: 'Move to Rat Pack' }).click();
+  await expect(bin.locator('.row', { hasText: 'Typhoid Rats' })).toHaveCount(0);
   await openDeck(page, 'Rat Pack');
-  await expect(page.locator('.inc .inc-have')).toContainText('Already in your box: Typhoid Rats');
-  await expect(page.locator('.inc [data-inc-copy]')).toHaveCount(0);
+  // It joins the deck list straight away and leaves the incoming change.
+  await expect(page.locator('.groups .row', { hasText: 'Typhoid Rats' })).toHaveCount(1);
+  await expect(page.locator('.inc')).toHaveCount(0);
 });
 
 test('All cards filters by color with the Exactly and At most modes', async ({ page }) => {

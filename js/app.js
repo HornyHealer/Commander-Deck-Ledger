@@ -228,9 +228,9 @@ function binRows() {
 }
 // Takes up to `want` copies of a card out of the card bin for a deck: loose bin cards are removed and spares
 // owned by other decks come off those decks' owned lists. Returns what was taken and where from.
-function pullFromBin(n, want, target) {
-  const r = binRows().find(x => x.n === n); const froms = []; const fromLoose = [];
-  if (!r) return { got: 0, froms, fromLoose };
+function pullFromBin(n, want, target, pairId) {
+  const r = binRows().find(x => x.n === n); const froms = []; const fromLoose = []; const srcs = [];
+  if (!r) return { got: 0, froms, fromLoose, srcs };
   let left = Math.min(want, r.total); const moved = left;
   for (const s of r.srcs) {
     if (!left) break; if (s.id === target.id) continue;
@@ -242,16 +242,54 @@ function pullFromBin(n, want, target) {
     }
     const src = S.decks.get(s.id); const take = Math.min(s.q, left);
     unprintCards(src, [{ n, q: take }], { id: target.id, name: target.name });
+    const se = src.log[src.log.length - 1]; if (pairId) se.pair = { deck: target.id, entry: pairId }; srcs.push({ deck: src.id, entry: se.id, name: src.name });
     froms.push(src.name); left -= take; save(src);
   }
-  return { got: moved - left, froms, fromLoose };
+  return { got: moved - left, froms, fromLoose, srcs };
 }
+// Fills an incoming card with a spare from the card bin: the copy leaves the bin and joins the deck list right
+// away (one history entry, undoable from this deck or the deck the spare came from). Cards that are part of a
+// swap still waiting on Arrived are marked owned now and join the list when the swap arrives.
 function moveFromBin(n, targetId) {
   const target = S.decks.get(targetId); if (!target) return 0;
   const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0; if (!need) return 0;
-  const { got, froms, fromLoose } = pullFromBin(n, need, target); if (!got) return 0;
-  printCards(target, [{ n, q: got }], fromLoose.length ? { names: froms, loose: fromLoose } : { names: froms });
+  const id = uid();
+  const { got, froms, fromLoose, srcs } = pullFromBin(n, need, target, id); if (!got) return 0;
+  let left = got; const taken = [];
+  for (const b of incomingOf(target)) {
+    if (!left) break; if (b.out.length) continue;
+    const x = b.in.find(y => y.n === n); if (!x) continue;
+    const k = Math.min(x.q, left); x.q -= k; left -= k;
+    const tb = { id: b.id, t: b.t, q: k }; if (b.note) tb.note = b.note; if (b.fromList) tb.fromList = true; taken.push(tb);
+  }
+  target.incoming = incomingOf(target).map(b => ({ ...b, in: b.in.filter(x => x.q > 0) })).filter(b => b.in.length || b.out.length);
+  if (!target.incoming.length) delete target.incoming;
+  const into = got - left; const now = Date.now();
+  if (into) { const cm = curMap(target); cm.set(n, (cm.get(n) || 0) + into); const order = target.cur.map(c => c.n); if (!order.includes(n)) order.push(n); target.cur = order.map(x => ({ n: x, q: cm.get(x) })); }
+  markPrinted(target, n, got);
+  const e = { id, t: now, kind: "swap", out: [], in: into ? [{ n, q: into }] : [], cards: [{ n, q: got }], got: [{ n, q: got }], fromBin: { names: froms, loose: fromLoose, srcs, inc: taken } };
+  target.log.push(e); target.updatedAt = now;
   save(target); return got;
+}
+// Undoes a move out of the card bin: the card leaves the deck (and its owned list), goes back to the bin or the
+// deck that owned the spare, and back onto the incoming list.
+function undoBinMove(target, e) {
+  undoEntry(target, e);
+  const fb = e.fromBin;
+  if (fb.loose && fb.loose.length) { for (const x of fb.loose) S.loose.cards.push({ n: x.n, q: x.q, from: x.from || undefined, at: Date.now() }); S.loose.cards.forEach(c => { if (c.from === undefined) delete c.from; }); saveLoose(); }
+  for (const sref of fb.srcs || []) { const src = S.decks.get(sref.deck); const se = src && src.log.find(x => x.id === sref.entry); if (se) { undoEntry(src, se); save(src); } }
+  const n = (e.cards[0] || {}).n;
+  for (const tb of fb.inc || []) {
+    const b = incomingOf(target).find(x => x.id === tb.id);
+    if (b) { const x = b.in.find(y => y.n === n); if (x) x.q += tb.q; else b.in.push({ n, q: tb.q }); }
+    else { const nb = { id: tb.id, t: tb.t, out: [], in: [{ n, q: tb.q }] }; if (tb.note) nb.note = tb.note; if (tb.fromList) nb.fromList = true; target.incoming = [...incomingOf(target), nb].sort((x, y) => x.t - y.t); }
+  }
+}
+// The other deck's half of a bin move, for the undo message.
+function binPartner(d, e) {
+  if (e.fromBin) { const sref = (e.fromBin.srcs || [])[0]; const dk = sref && S.decks.get(sref.deck); return dk ? { deck: dk } : null; }
+  if (e.pair) { const dk = S.decks.get(e.pair.deck); const te = dk && dk.log.find(x => x.id === e.pair.entry); return te ? { deck: dk, entry: te } : null; }
+  return null;
 }
 // ---------- collection check: which cards of a pasted list you already own ----------
 function collectionCheck(cards) {
@@ -351,6 +389,8 @@ function undoLast(d) {
     d.log.pop(); d.updatedAt = Date.now(); return;
   }
   if (e.xfer) { const pt = xferPartner(e); undoEntry(d, e); if (pt) { undoEntry(pt.deck, pt.entry); save(pt.deck); } return; }
+  if (e.fromBin) return undoBinMove(d, e);
+  if (e.pair) { const pt = binPartner(d, e); if (pt) { undoBinMove(pt.deck, pt.entry); save(pt.deck); return; } }
   undoEntry(d, e);
   // Undoing an arrival also undoes its swap and puts the cards back on the incoming list.
   let sw = e.inc ? e : null;
@@ -1398,9 +1438,10 @@ function renderHistory(d) {
     else if (e.kind === "print" && e.arrival) title = `Arrived: ${pl} card${s} added to owned`;
     else if (e.kind === "print") title = e.from ? `Took ${pl} card${s} from the bin${e.from.names && e.from.names.length ? " (" + e.from.names.map(nm => deckLink({ name: nm })).join(", ") + ")" : ""}` : `Added ${pl} card${s} to owned`;
     else if (e.kind === "unprint") title = e.to ? `Moved ${pl} owned card${s} to ${deckLink(e.to)}` : `Removed ${pl} card${s} from owned`;
+    else if (e.fromBin) { const nq = qsum(e.cards || []); const names = [...new Set(e.fromBin.names || [])]; title = `Took ${nq} card${nq === 1 ? "" : "s"} from the card bin${names.length ? " (" + names.map(nm => /\(deleted\)$|^Added directly$/.test(nm) ? esc(nm === "Added directly" ? "added directly" : nm) : deckLink({ name: nm })).join(", ") + ")" : ""}`; }
     else if (e.xfer) { const nq = qsum(e.out || []) + qsum(e.in || []); title = e.xfer.to ? `Moved ${nq} card${nq === 1 ? "" : "s"} to ${deckLink(e.xfer.to)}` : `Took ${nq} card${nq === 1 ? "" : "s"} from ${deckLink(e.xfer.from)}`; }
     else title = changeTitle(e) + (e.inc ? `<span class="flag plain">Incoming since ${fmtShort(e.inc.t)}</span>` : "");
-    const pt = latest && e.xfer ? xferPartner(e) : null;
+    const pt = latest && e.xfer ? xferPartner(e) : latest && (e.fromBin || e.pair) ? binPartner(d, e) : null;
     const undo = latest ? (S.confirm === "undo" ? `<span class="confirm">${pt ? `Undo this move? It's also undone in ${esc(pt.deck.name)}.` : "Undo this change?"} <button class="btn sm danger" data-act="undo-yes">Undo</button><button class="btn sm ghost" data-act="undo-no">Keep</button></span>` : `<button class="btn sm ghost" data-act="undo">Undo</button>`) : "";
     const view = e.kind === "create" || isChange(e) ? `<button class="btn sm ghost" data-snap="${e.kind === "create" ? "start" : esc(e.id)}">${e.kind === "create" ? "View original list" : "View deck after this"}</button>` : "";
     return `<div class="entry"><div class="when">${fmtDate(e.t)}</div><div class="what"><div class="kind">${title}${undo}${view}</div>${e.kind === "create" ? "" : e.cards ? `<div class="plines ${e.kind}">${e.cards.map(c => `<span>${c.q}x ${esc(c.n)}</span>`).join("")}</div>` : swapLines(e)}${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}</div></div>`;
@@ -1756,7 +1797,7 @@ document.addEventListener("click", e => {
   }
   if (t.dataset.binrm) { S.confirm = "binrm|" + t.dataset.binrm; return render(); }
   if (t.dataset.binrmYes) { S.loose.cards = S.loose.cards.filter(c => c.n !== t.dataset.binrmYes); S.confirm = null; saveLoose(); render(); return toast("Removed from the bin."); }
-  if (t.dataset.binmove) { const [n, id] = JSON.parse(t.dataset.binmove); const got = moveFromBin(n, id); render(); return toast(got ? `Moved ${got}x ${n} from the bin to ${S.decks.get(id).name}.` : "Nothing to move."); }
+  if (t.dataset.binmove) { const [n, id] = JSON.parse(t.dataset.binmove); const got = moveFromBin(n, id); render(); return toast(got ? `Moved ${got}x ${n} from the card bin into ${S.decks.get(id).name}. Undo it from History if needed.` : "Nothing to move."); }
   if (t.dataset.unprint) { S.confirm = "unprint|" + t.dataset.unprint; return render(); }
   if (t.dataset.unprintYes && d) { const pp = d.printed.find(p => p.n === t.dataset.unprintYes); if (pp) unprintCards(d, [{ n: pp.n, q: pp.q }]); S.confirm = null; save(d); render(); return toast("Removed from owned."); }
   if (t.dataset.bringback && d) return stage(d, "in", t.dataset.bringback);
@@ -1819,7 +1860,7 @@ document.addEventListener("click", e => {
   if (act === "unprint-no" || act === "binrm-no") { S.confirm = null; return render(); }
   if (act === "copy-toprint" && d) { if ($(".menu")) render(); return copyText(incomingNeeds(d).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming cards"); }
   if (act === "undo-no") { S.confirm = null; return render(); }
-  if (act === "undo-yes" && d) { const last = d.log[d.log.length - 1]; const pt = last && last.xfer ? xferPartner(last) : null; undoLast(d); S.confirm = null; save(d); render(); return toast(pt ? `Move undone here and in ${pt.deck.name}.` : "Change undone."); }
+  if (act === "undo-yes" && d) { const last = d.log[d.log.length - 1]; const pt = last && last.xfer ? xferPartner(last) : last && (last.fromBin || last.pair) ? binPartner(d, last) : null; undoLast(d); S.confirm = null; save(d); render(); return toast(pt ? `Move undone here and in ${pt.deck.name}.` : "Change undone."); }
   const dlg = t.dataset.dlg; if (!dlg) return;
   if (dlg === "close") return closeDialog();
   if (dlg === "create") {
