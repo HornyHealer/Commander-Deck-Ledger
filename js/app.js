@@ -250,12 +250,10 @@ function pullFromBin(n, want, target, pairId) {
 // Fills an incoming card with a spare from the card bin: the copy leaves the bin and joins the deck list right
 // away (one history entry, undoable from this deck or the deck the spare came from). Cards that are part of a
 // swap still waiting on Arrived are marked owned now and join the list when the swap arrives.
-function moveFromBin(n, targetId) {
-  const target = S.decks.get(targetId); if (!target) return 0;
-  const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0; if (!need) return 0;
-  const id = uid();
-  const { got, froms, fromLoose, srcs } = pullFromBin(n, need, target, id); if (!got) return 0;
-  let left = got; const taken = [];
+// Takes up to q copies of a card off a deck's incoming changes that only add cards (swaps keep waiting for
+// Arrived). Returns how many came off and from which changes, so undo can put them back.
+function takeFromIncoming(target, n, q) {
+  let left = q; const taken = [];
   for (const b of incomingOf(target)) {
     if (!left) break; if (b.out.length) continue;
     const x = b.in.find(y => y.n === n); if (!x) continue;
@@ -264,8 +262,39 @@ function moveFromBin(n, targetId) {
   }
   target.incoming = incomingOf(target).map(b => ({ ...b, in: b.in.filter(x => x.q > 0) })).filter(b => b.in.length || b.out.length);
   if (!target.incoming.length) delete target.incoming;
-  const into = got - left; const now = Date.now();
-  if (into) { const cm = curMap(target); cm.set(n, (cm.get(n) || 0) + into); const order = target.cur.map(c => c.n); if (!order.includes(n)) order.push(n); target.cur = order.map(x => ({ n: x, q: cm.get(x) })); }
+  return { into: q - left, taken };
+}
+function restoreIncoming(target, n, taken) {
+  for (const tb of taken || []) {
+    const b = incomingOf(target).find(x => x.id === tb.id);
+    if (b) { const x = b.in.find(y => y.n === n); if (x) x.q += tb.q; else b.in.push({ n, q: tb.q }); }
+    else { const nb = { id: tb.id, t: tb.t, out: [], in: [{ n, q: tb.q }] }; if (tb.note) nb.note = tb.note; if (tb.fromList) nb.fromList = true; target.incoming = [...incomingOf(target), nb].sort((x, y) => x.t - y.t); }
+  }
+}
+function addToList(d, n, q) { if (!q) return; const cm = curMap(d); cm.set(n, (cm.get(n) || 0) + q); const order = d.cur.map(c => c.n); if (!order.includes(n)) order.push(n); d.cur = order.map(x => ({ n: x, q: cm.get(x) })); }
+// Fills an incoming card with a copy from another deck: cut from that deck (and its owned list), added here as
+// owned. Both decks log the move and either can undo it, which also puts the card back on the incoming list.
+function grabFromDeck(n, srcId, targetId) {
+  const target = S.decks.get(targetId), src = S.decks.get(srcId); if (!target || !src || src === target) return 0;
+  const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0;
+  const q = Math.min(need, curMap(src).get(n) || 0); if (!q) return 0;
+  const xid = uid(); const now = Date.now();
+  applyChange(src, [{ n, q }], [], "", "swap");
+  const se = src.log[src.log.length - 1]; se.xfer = { id: xid, to: { id: target.id, name: target.name } };
+  const p = src.printed.find(y => y.n === n);
+  if (p) { const take = Math.min(p.q, q); se.lost = [{ n, q: take, at: p.at, o: p.o }]; p.q -= take; if (p.q <= 0) src.printed = src.printed.filter(y => y !== p); }
+  const { into, taken } = takeFromIncoming(target, n, q);
+  addToList(target, n, into); markPrinted(target, n, q);
+  target.log.push({ id: uid(), t: now, kind: "swap", out: [], in: into ? [{ n, q: into }] : [], cards: [{ n, q }], got: [{ n, q }], xfer: { id: xid, from: { id: src.id, name: src.name } }, grabInc: taken });
+  target.updatedAt = now; save(src); save(target); return q;
+}
+function moveFromBin(n, targetId) {
+  const target = S.decks.get(targetId); if (!target) return 0;
+  const need = (incomingNeeds(target).find(x => x.n === n) || {}).q || 0; if (!need) return 0;
+  const id = uid();
+  const { got, froms, fromLoose, srcs } = pullFromBin(n, need, target, id); if (!got) return 0;
+  const { into, taken } = takeFromIncoming(target, n, got); const now = Date.now();
+  addToList(target, n, into);
   markPrinted(target, n, got);
   const e = { id, t: now, kind: "swap", out: [], in: into ? [{ n, q: into }] : [], cards: [{ n, q: got }], got: [{ n, q: got }], fromBin: { names: froms, loose: fromLoose, srcs, inc: taken } };
   target.log.push(e); target.updatedAt = now;
@@ -278,12 +307,7 @@ function undoBinMove(target, e) {
   const fb = e.fromBin;
   if (fb.loose && fb.loose.length) { for (const x of fb.loose) S.loose.cards.push({ n: x.n, q: x.q, from: x.from || undefined, at: Date.now() }); S.loose.cards.forEach(c => { if (c.from === undefined) delete c.from; }); saveLoose(); }
   for (const sref of fb.srcs || []) { const src = S.decks.get(sref.deck); const se = src && src.log.find(x => x.id === sref.entry); if (se) { undoEntry(src, se); save(src); } }
-  const n = (e.cards[0] || {}).n;
-  for (const tb of fb.inc || []) {
-    const b = incomingOf(target).find(x => x.id === tb.id);
-    if (b) { const x = b.in.find(y => y.n === n); if (x) x.q += tb.q; else b.in.push({ n, q: tb.q }); }
-    else { const nb = { id: tb.id, t: tb.t, out: [], in: [{ n, q: tb.q }] }; if (tb.note) nb.note = tb.note; if (tb.fromList) nb.fromList = true; target.incoming = [...incomingOf(target), nb].sort((x, y) => x.t - y.t); }
-  }
+  restoreIncoming(target, (e.cards[0] || {}).n, fb.inc);
 }
 // The other deck's half of a bin move, for the undo message.
 function binPartner(d, e) {
@@ -388,7 +412,12 @@ function undoLast(d) {
     if (e.fromList) { const cm = curMap(d); for (const x of e.fromList) cm.set(x.n, (cm.get(x.n) || 0) + x.q); const order = d.cur.map(c => c.n); for (const n of cm.keys()) if (!order.includes(n)) order.push(n); d.cur = order.map(n => ({ n, q: cm.get(n) })); }
     d.log.pop(); d.updatedAt = Date.now(); return;
   }
-  if (e.xfer) { const pt = xferPartner(e); undoEntry(d, e); if (pt) { undoEntry(pt.deck, pt.entry); save(pt.deck); } return; }
+  if (e.xfer) {
+    const pt = xferPartner(e); undoEntry(d, e); if (pt) { undoEntry(pt.deck, pt.entry); save(pt.deck); }
+    const [rd, re] = e.xfer.from ? [d, e] : pt ? [pt.deck, pt.entry] : [null, null];
+    if (rd && re.grabInc) { restoreIncoming(rd, (re.cards[0] || {}).n, re.grabInc); if (rd !== d) save(rd); }
+    return;
+  }
   if (e.fromBin) return undoBinMove(d, e);
   if (e.pair) { const pt = binPartner(d, e); if (pt) { undoBinMove(pt.deck, pt.entry); save(pt.deck); return; } }
   undoEntry(d, e);
@@ -503,13 +532,19 @@ function dropIncoming(d, id, toBench) {
 }
 function renderIncoming(d) {
   const list = incomingOf(d); if (!list.length) return "";
-  const grab = new Set(binRows().filter(r => r.srcs.some(x => x.id !== d.id)).map(r => r.n));
+  const inBin = new Set(binRows().filter(r => r.srcs.some(x => x.id !== d.id)).map(r => r.n));
+  const sourcesOf = n => [...(inBin.has(n) ? [{ id: "_bin", label: "Card bin" }] : []), ...[...S.decks.values()].filter(x => x.id !== d.id).map(x => ({ x, q: curMap(x).get(n) || 0 })).filter(o => o.q).map(o => ({ id: o.x.id, label: o.x.name + (o.q > 1 ? ` (${o.q})` : "") }))];
+  const grabBoxFor = (x, need) => {
+    if (!need.some(y => y.n === x.n)) return "";
+    const src = sourcesOf(x.n); if (!src.length) return "";
+    return `<span class="grabbox"><select class="field grab-src" aria-label="Where to grab ${esc(x.n)} from">${src.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join("")}</select><button class="grab" title="Take this copy into this deck" data-grab="${esc(JSON.stringify([x.n, d.id]))}">${ICONS.down}Grab</button></span>`;
+  };
   return `<div class="incoming">${list.map(b => {
-    const get = toGet(d, b); const need = get.filter(x => x.q > 0); const have = get.filter(x => x.have > 0);
+    const get = toGet(d, b); const need = get.filter(x => x.q > 0); const have = get.filter(x => x.have > 0); const grabBox = x => grabBoxFor(x, need);
     const nIn = qsum(b.in), nOut = qsum(b.out);
     const conf = S.confirm === "inc-cancel|" + b.id;
     return `<div class="inc" data-inc="${esc(b.id)}"><div class="inc-head"><span class="label">${ICONS.inbox}Incoming since ${fmtShort(b.t)}</span><b>${nIn ? `${nIn} card${nIn > 1 ? "s" : ""} coming in` : "No new cards"}${nOut ? `, ${nOut} leaving` : ""}</b></div>
-      ${swapLines(b, x => grab.has(x.n) && need.some(y => y.n === x.n) ? `<button class="grab" title="Take a spare copy out of the card bin for this deck" data-binmove="${esc(JSON.stringify([x.n, d.id]))}">${ICONS.down}Grab from bin</button>` : "")}${b.note ? `<div class="note">${esc(b.note)}</div>` : ""}
+      ${swapLines(b, grabBox)}${b.note ? `<div class="note">${esc(b.note)}</div>` : ""}
       ${have.length ? `<div class="inc-have">Already in your box: ${have.map(x => esc(x.n) + (x.have > 1 ? ` ×${x.have}` : "")).join(", ")}</div>` : ""}
       <div class="inc-acts">${conf ? `<span class="confirm">Cancel this incoming change? <button class="btn sm danger" data-inc-cancel-yes="${esc(b.id)}">Cancel it</button><button class="btn sm ghost" data-act="inc-cancel-no">Keep</button></span>` : `<button class="btn sm primary" data-arrive="${esc(b.id)}">${ICONS.printed}Arrived</button>${need.length ? `<button class="btn sm" data-inc-copy="${esc(b.id)}" title="Copy the cards you still need to get">${ICONS.copy}Copy list<span class="mono muted">${qsum(need)}</span></button>` : ""}<button class="btn sm ghost" data-inc-bench="${esc(b.id)}">Back to bench</button><button class="btn sm ghost" data-inc-cancel="${esc(b.id)}">Cancel</button>`}</div></div>`;
   }).join("")}</div>`;
@@ -1799,6 +1834,12 @@ document.addEventListener("click", e => {
   }
   if (t.dataset.binrm) { S.confirm = "binrm|" + t.dataset.binrm; return render(); }
   if (t.dataset.binrmYes) { S.loose.cards = S.loose.cards.filter(c => c.n !== t.dataset.binrmYes); S.confirm = null; saveLoose(); render(); return toast("Removed from the bin."); }
+  if (t.dataset.grab) {
+    const [n, id] = JSON.parse(t.dataset.grab); const sel = t.parentElement && t.parentElement.querySelector(".grab-src"); const from = sel ? sel.value : "_bin";
+    const got = from === "_bin" ? moveFromBin(n, id) : grabFromDeck(n, from, id); render();
+    const where = from === "_bin" ? "the card bin" : (S.decks.get(from) || {}).name;
+    return toast(got ? `Grabbed ${got}x ${n} from ${where}. Undo it from History if needed.` : "Nothing to grab.");
+  }
   if (t.dataset.binmove) { const [n, id] = JSON.parse(t.dataset.binmove); const got = moveFromBin(n, id); render(); return toast(got ? `Moved ${got}x ${n} from the card bin into ${S.decks.get(id).name}. Undo it from History if needed.` : "Nothing to move."); }
   if (t.dataset.unprint) { S.confirm = "unprint|" + t.dataset.unprint; return render(); }
   if (t.dataset.unprintYes && d) { const pp = d.printed.find(p => p.n === t.dataset.unprintYes); if (pp) unprintCards(d, [{ n: pp.n, q: pp.q }]); S.confirm = null; save(d); render(); return toast("Removed from owned."); }

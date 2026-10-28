@@ -198,11 +198,14 @@ test('a bin card set to incoming can be moved in later, leaving the bin, and und
   const inc = page.locator('.inc');
   await expect(inc).toContainText('Arcane Signet');
   // Arcane Signet was added to the bin directly; Fervent Champion is a spare cut from Fixture Zagras.
-  // Each incoming card with a spare in the bin has its own "Grab from bin" button; Krenko doesn't.
+  // Each incoming card you have a copy of somewhere gets a source picker and a Grab button; Krenko doesn't.
   await expect(inc.locator('.swap', { hasText: 'Krenko, Mob Boss' }).locator('.grab')).toHaveCount(0);
   await expect(inc).not.toContainText('Spare in the card bin');
-  await inc.locator('.swap', { hasText: 'Arcane Signet' }).getByRole('button', { name: 'Grab from bin' }).click();
-  await inc.locator('.swap', { hasText: 'Fervent Champion' }).getByRole('button', { name: 'Grab from bin' }).click();
+  for (const n of ['Arcane Signet', 'Fervent Champion']) {
+    const line = inc.locator('.swap', { hasText: n });
+    await expect(line.locator('select.grab-src')).toHaveValue('_bin');
+    await line.getByRole('button', { name: 'Grab' }).click();
+  }
   await expect(deckRow(page, 'Arcane Signet')).toHaveCount(1);
   await expect(deckRow(page, 'Fervent Champion')).toHaveCount(1);
   await expect(inc).not.toContainText('Arcane Signet');
@@ -239,4 +242,54 @@ test('a bin card set to incoming can be moved in later, leaving the bin, and und
   await expect(inc).toContainText('Arcane Signet');
   await page.click('[data-act="home"]');
   await expect(bin.locator('.row', { hasText: 'Arcane Signet' }).locator('.q')).toHaveText('2');
+});
+
+test('an incoming card can be grabbed from another deck, picked from every deck that has it', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Lightning Bolt\n1 Sol Ring');
+  await page.click('[data-act="chk-create"]');
+  await page.fill('#n-name', 'Grab Test');
+  await page.click('[data-dlg="create"]');
+  const inc = page.locator('.inc');
+  // Sol Ring is in both decks, so both are offered; Lightning Bolt only in Fixture Zagras.
+  const sol = inc.locator('.swap', { hasText: 'Sol Ring' });
+  await expect(sol.locator('select.grab-src option')).toHaveText(['Fixture Zagras', 'Rat Pack']);
+  await sol.locator('select.grab-src').selectOption({ label: 'Rat Pack' });
+  await sol.getByRole('button', { name: 'Grab' }).click();
+  await inc.locator('.swap', { hasText: 'Lightning Bolt' }).getByRole('button', { name: 'Grab' }).click();
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await expect(inc).not.toContainText('Sol Ring');
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').nth(0)).toContainText('Took 1 card from Fixture Zagras');
+  await expect(page.locator('.hist .entry').nth(1)).toContainText('Took 1 card from Rat Pack');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(0);
+
+  // Undo the Lightning Bolt grab from Fixture Zagras: it goes back there and back on the incoming list.
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('Moved 1 card to Grab Test');
+  await page.click('[data-act="undo"]');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Grab Test' }).click();
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(0);
+  await expect(page.locator('.inc')).toContainText('Lightning Bolt');
+
+  // Undo the Sol Ring grab from the new deck: back to Rat Pack and back on the incoming list.
+  await page.click('[data-tab="history"]');
+  await page.click('[data-act="undo"]');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(0);
+  await expect(page.locator('.inc')).toContainText('Sol Ring');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
 });

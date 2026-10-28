@@ -538,3 +538,6 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .swap .i .grab:hover { background: var(--ink); color: var(--acid); }
 .swap .i .grab:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
 .swaps.adds .swap { grid-template-columns: minmax(0, 1fr); }
+.swap .i .grabbox { display: inline-flex; margin-left: 8px; vertical-align: 1px; font-weight: 400; }
+.swap .i .grabbox .grab-src { padding: 1px 4px; font: 11px var(--body); max-width: 170px; border-right: 0; }
+.swap .i .grabbox .grab { margin-left: 0; }
