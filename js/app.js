@@ -1520,9 +1520,7 @@ function renderDialog() {
       <label class="f"><span class="label">Short description (optional)</span><textarea class="field short" id="n-desc" maxlength="280" placeholder="What the deck does and how it wins">${esc(dl.desc || "")}</textarea></label>
       <label class="f"><span class="label">Deck list</span><textarea class="field" id="n-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(dl.text || "")}</textarea></label>
       <div id="n-parse"></div>
-      <label class="f"><span class="label">Still waiting on (optional)</span><textarea class="field short" id="n-wait" placeholder="1 Rhystic Study&#10;1 Smothering Tithe">${esc(dl.wait || "")}</textarea><span class="fhint">Cards from the list you don't have yet, one per line. They're kept out of the deck as an incoming change until they arrive.</span></label>
-      ${dl.fromCheck && dl.fromCheck.bin.length ? `<label class="checkline"><input type="checkbox" id="n-takebin" ${dl.takeBin === false ? "" : "checked"}> Take the ${qsum(dl.fromCheck.bin)} card${qsum(dl.fromCheck.bin) > 1 ? "s" : ""} found in the card bin out of the bin and into this deck</label>` : ""}
-      ${dl.fromCheck && dl.fromCheck.decks && dl.fromCheck.decks.length ? `<div class="takedecks"><label class="checkline"><input type="checkbox" id="n-takedecks" ${dl.takeDecks ? "checked" : ""}> Take the ${qsum(dl.fromCheck.decks)} card${qsum(dl.fromCheck.decks) > 1 ? "s" : ""} owned in other decks out of those decks</label><span class="fhint">${dl.fromCheck.decks.map(x => `${x.q > 1 ? x.q + "x " : ""}${esc(x.n)} from ${esc(x.name)}`).join(" · ")}. Each move shows in both decks' history and can be undone from either one.</span></div>` : ""}
+      ${dl.fromCheck ? `<div class="f"><span class="label">From your check</span><div id="n-rules" class="rules"></div></div>` : `<label class="f"><span class="label">Still waiting on (optional)</span><textarea class="field short" id="n-wait" placeholder="1 Rhystic Study&#10;1 Smothering Tithe">${esc(dl.wait || "")}</textarea><span class="fhint">Cards from the list you don't have yet, one per line. They're kept out of the deck as an incoming change until they arrive.</span></label>`}
     </div>
     <footer><span class="grow">The cards you have are saved as the deck's original list.</span><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="create">Create deck</button></footer></div>`;
   } else if (dl.kind === "edit") {
@@ -1635,16 +1633,49 @@ function baPick(i) {
   S.dialog.text = ta.value; updateBinAdd();
   const s = $("#ba-search"); s.value = ""; $("#g-ba").hidden = true; s.focus();
 }
+// Where each card of a checked list goes when creating a deck from it, by group:
+// bin: owned (taken out of the bin) or incoming; decks: swap (moved from that deck), owned or incoming;
+// need: incoming or owned.
+const RULE_OPTS = {
+  bin: { title: "In the card bin", opts: [["owned", "Owned", "Taken out of the bin and into this deck"], ["incoming", "Incoming", "Wait for another copy"]] },
+  decks: { title: "In other decks", opts: [["swap", "Swap decks", "Moved out of the other deck; undo from either deck"], ["owned", "Owned", "Counted as owned here too; the other deck keeps it"], ["incoming", "Incoming", "Wait for another copy"]] },
+  need: { title: "Not owned", opts: [["incoming", "Incoming", "Kept out of the deck until it arrives"], ["owned", "Owned", "You have it already; add it as owned"]] },
+};
+function planFromCheck(cards, rules) {
+  const plan = { wait: [], steal: [], bin: [], groups: { bin: [], decks: [], need: [] } };
+  for (const r of collectionCheck(cards)) {
+    if (r.basic) continue;
+    if (r.fromBin) { plan.groups.bin.push({ n: r.n, q: r.fromBin }); (rules.bin === "incoming" ? plan.wait : plan.bin).push({ n: r.n, q: r.fromBin }); }
+    if (r.fromDecks) {
+      let left = r.fromDecks;
+      for (const x of r.decks) { if (!left) break; const q = Math.min(x.q, left); left -= q; plan.groups.decks.push({ n: r.n, q, id: x.id, name: x.name }); if (rules.decks === "swap") plan.steal.push({ n: r.n, q, id: x.id, name: x.name }); }
+      if (rules.decks === "incoming") plan.wait.push({ n: r.n, q: r.fromDecks });
+    }
+    if (r.need) { plan.groups.need.push({ n: r.n, q: r.need }); if (rules.need !== "owned") plan.wait.push({ n: r.n, q: r.need }); }
+  }
+  return plan;
+}
+function renderRules() {
+  const el = $("#n-rules"); const dl = S.dialog; if (!el || !dl || !dl.fromCheck) return;
+  const plan = planFromCheck((dl.parsed || { cards: [] }).cards, dl.rules); dl.plan = plan;
+  const names = (arr, g) => { const shown = arr.slice(0, 5).map(x => `${x.q > 1 ? x.q + "x " : ""}${esc(x.n)}${g === "decks" ? ` <span class="from">from ${esc(x.name)}</span>` : ""}`); return shown.join(", ") + (arr.length > 5 ? `, +${arr.length - 5} more` : ""); };
+  const rows = Object.entries(RULE_OPTS).filter(([g]) => plan.groups[g].length).map(([g, o]) => {
+    const cur = dl.rules[g]; const n = qsum(plan.groups[g]); const tip = (o.opts.find(x => x[0] === cur) || [])[2] || "";
+    return `<div class="rule"><div class="rule-head"><span class="rule-t">${o.title}<b class="mono">${n}</b></span><div class="chips seg" role="group" aria-label="${o.title}">${o.opts.map(([v, l]) => `<button type="button" class="chip${cur === v ? " on" : ""}" aria-pressed="${cur === v}" data-rule="${g}|${v}">${l}</button>`).join("")}</div></div><div class="rule-cards">${names(plan.groups[g], g)}<span class="rule-tip"> · ${tip}</span></div></div>`;
+  });
+  el.innerHTML = rows.length ? rows.join("") : `<p class="muted" style="margin:4px 0 0;font-size:13px">Every card in this list is a basic land, so there's nothing to sort.</p>`;
+}
 function updateNewParse() {
   const el = $("#n-parse"); const ta = $("#n-list"); if (!el || !ta) return;
   const p = parseList(ta.value); const dl = S.dialog; dl.parsed = p;
-  if (!p.cards.length) { el.innerHTML = ""; return; }
+  if (!p.cards.length) { el.innerHTML = ""; renderRules(); return; }
   const t = p.cards.reduce((a, c) => a + c.q, 0);
   const leg = p.cards.filter(c => isCmdrPick(rec(c.n))).map(c => c.n);
   if (!dl.cmdTouched) dl.cmds = p.commanders.length ? p.commanders : (leg.length === 1 ? leg : []);
   const opts = [...new Set([...p.commanders, ...leg])];
   el.innerHTML = `<div class="parse-sum"><span><b class="mono">${t}</b> cards</span><span><b class="mono">${p.cards.length}</b> unique</span>${p.unknown.length ? `<span class="unk">${p.unknown.length} not recognized: ${p.unknown.slice(0, 6).map(esc).join(", ")}${p.unknown.length > 6 ? "…" : ""}</span>` : '<span style="color:var(--good)">All names recognized</span>'}</div>
   <div class="f" style="margin-top:10px"><span class="label">Commander</span><div class="cmdpick" style="margin-top:5px">${opts.length ? opts.map(n => `<label><input type="checkbox" name="n-cmd" value="${esc(n)}" ${dl.cmds.includes(n) ? "checked" : ""}>${esc(n)}</label>`).join("") : '<span class="muted" style="font-size:13px">No legendary creatures found. You can set it later.</span>'}</div></div>`;
+  renderRules();
 }
 function diffLists(d, p) {
   const cm = curMap(d); const nm = new Map(p.cards.map(c => [c.n, c.q])); const out = [], ins = [];
@@ -1681,6 +1712,7 @@ document.addEventListener("click", e => {
   if (t.dataset.allchip) { S.allChip = t.dataset.allchip; return render(); }
   if (t.dataset.pf) { S.printedFilter = t.dataset.pf; return render(); }
   if (t.dataset.cut && d) return stage(d, "out", t.dataset.cut);
+  if (t.dataset.rule && S.dialog && S.dialog.rules) { const [g, v] = t.dataset.rule.split("|"); S.dialog.rules[g] = v; return renderRules(); }
   if (t.dataset.arrive && d) return arrive(d, t.dataset.arrive);
   if (t.dataset.incCopy && d) { const b = incomingOf(d).find(x => x.id === t.dataset.incCopy); if (b) copyText(toGet(d, b).filter(x => x.q > 0).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming list"); return; }
   if (t.dataset.incBench && d) return dropIncoming(d, t.dataset.incBench, true);
@@ -1740,12 +1772,8 @@ document.addEventListener("click", e => {
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
-  if (act === "chk-create") {
-    const rows = S.checkRows || []; const need = rows.filter(r => r.need); const bin = rows.filter(r => r.fromBin);
-    const decks = []; // which deck each card would come from, first deck first
-    for (const r of rows.filter(x => x.fromDecks)) { let left = r.fromDecks; for (const x of r.decks) { if (!left) break; const q = Math.min(x.q, left); decks.push({ n: r.n, q, id: x.id, name: x.name }); left -= q; } }
-    return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, wait: need.map(r => `${r.need}x ${r.n}`).join("\n"), fromCheck: { bin: bin.map(r => ({ n: r.n, q: r.fromBin })), decks }, takeBin: true, takeDecks: false });
-  }
+  if (act === "chk-create") return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, fromCheck: true, rules: { bin: "owned", decks: "swap", need: "incoming" } });
+
   if (act === "facet-clear") { S.allTypes = new Set(); S.allColors = new Set(); return render(); }
   if (act === "copy-all") { if ($(".menu")) render(); return copyText((S.allShown || []).filter(x => x.q > 0).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Card list"); }
   if (act === "copy-all-unp") { if ($(".menu")) render(); return copyText((S.allUnprinted || []).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming cards"); }
@@ -1774,8 +1802,9 @@ document.addEventListener("click", e => {
     if (!p.cards.length) { toast("Paste a list first, one card per line."); return; }
     const cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value);
     const name = ($("#n-name").value || "").trim();
-    const wait = parseList(($("#n-wait") || {}).value || "").cards;
-    const fc = S.dialog.fromCheck; const steal = fc && fc.decks && ($("#n-takedecks") || {}).checked ? fc.decks : [];
+    const plan = S.dialog.fromCheck ? planFromCheck(p.cards, S.dialog.rules) : null;
+    const wait = plan ? plan.wait : parseList(($("#n-wait") || {}).value || "").cards;
+    const steal = plan ? plan.steal : [];
     const left = new Map(p.cards.map(c => [c.n, c.q])); for (const w of [...wait, ...steal]) { const v = (left.get(w.n) || 0) - w.q; if (v > 0) left.set(w.n, v); else left.delete(w.n); }
     const deck = newDeck({ name, cards: p.cards.filter(c => left.has(c.n)).map(c => ({ n: c.n, q: left.get(c.n) })), commanders: cmds });
     if (wait.length) { const now = Date.now() + 1, id = uid(); deck.incoming = [{ id, t: now, out: [], in: wait }]; deck.log.push({ id, t: now, kind: "incoming", out: [], in: wait }); }
@@ -1788,9 +1817,9 @@ document.addEventListener("click", e => {
       for (const [id, items] of bySrc) { const src = S.decks.get(id); if (src) { const have = curMap(src); moved += transferCards(src, deck, items.map(x => ({ n: x.n, q: Math.min(x.q, have.get(x.n) || 0) }))); } }
       deck.commanders = cmds.filter(n => curMap(deck).has(n) || p.cards.some(c => c.n === n));
     }
-    if (S.dialog.fromCheck && ($("#n-takebin") || {}).checked) {
+    if (plan && plan.bin.length) {
       const owned = curMap(deck); S.decks.set(deck.id, deck);
-      for (const x of S.dialog.fromCheck.bin) { const q = Math.min(x.q, owned.get(x.n) || 0); if (q) fromBin += pullFromBin(x.n, q, deck).got; }
+      for (const x of plan.bin) { const q = Math.min(x.q, owned.get(x.n) || 0); if (q) fromBin += pullFromBin(x.n, q, deck).got; }
     }
     save(deck); closeDialog(); S.tab = "current"; go("deck", deck.id); if (fromBin || moved) { const parts = [fromBin ? `${fromBin} from the card bin` : "", moved ? `${moved} from other decks` : ""].filter(Boolean).join(" and "); toast(`Deck created with ${parts}${wait.length ? `; ${qsum(wait)} waiting as incoming` : ""}.`); return; } toast(wait.length ? `Deck created. ${qsum(wait)} card${qsum(wait) > 1 ? "s are" : " is"} waiting as incoming; press Arrived when they're in hand.` : "Deck created.");
     return;
@@ -1828,8 +1857,6 @@ document.addEventListener("change", e => {
   if (e.target.id === "e-artcard" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); if (e.target.value === "__none") dd.artOff = true; else { dd.artOff = false; dd.artCard = e.target.value; } save(dd); render(); renderDialog(); return; }
   if (e.target.id === "e-artpos" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); dd.artPos = e.target.value; save(dd); render(); renderDialog(); return; }
   if (e.target.id === "del-keep" && S.dialog) S.dialog.keep = e.target.checked;
-  if (e.target.id === "n-takebin" && S.dialog) S.dialog.takeBin = e.target.checked;
-  if (e.target.id === "n-takedecks" && S.dialog) S.dialog.takeDecks = e.target.checked;
   if ((e.target.id === "cmp-a" || e.target.id === "cmp-b") && S.cmp) { S.cmp[e.target.id.slice(4)] = e.target.value; const id = e.target.id; render(); const el = $("#" + id); if (el) el.focus(); return; }
   if (e.target.id === "h-date") S.histDate = e.target.value;
   if (e.target.name === "n-cmd" && S.dialog) { S.dialog.cmdTouched = true; S.dialog.cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value); }

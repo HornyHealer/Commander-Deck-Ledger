@@ -504,3 +504,13 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .check-input { position: static; }
   #chk-list { min-height: 200px; }
 }
+
+/* Create from a check: one row of buttons per group */
+.rules { display: grid; margin-top: 6px; outline: 1px solid var(--line); outline-offset: -1px; }
+.rule { display: grid; gap: 6px; padding: 10px 12px; border-bottom: 1px dotted var(--line); }
+.rule:last-child { border-bottom: 0; }
+.rule-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.rule-t { font-family: var(--wide); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; display: inline-flex; gap: 8px; align-items: baseline; }
+.rule-t b { font-size: 12px; }
+.rule-cards { font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+.rule-cards .from, .rule-tip { color: var(--muted); }

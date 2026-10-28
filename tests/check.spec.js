@@ -56,8 +56,11 @@ test('creates a deck from the checked list, taking bin cards and waiting on the 
   await page.click('[data-act="check"]');
   await page.fill('#chk-list', LIST);
   await page.click('[data-act="chk-create"]');
-  await expect(page.locator('#n-wait')).toHaveValue(/Rhystic Study/);
-  await expect(page.locator('#n-takebin')).toBeChecked();
+  // Defaults: bin cards owned, not-owned cards incoming. Other-deck cards stay put (Owned) in this test.
+  await expect(page.locator('#n-wait')).toHaveCount(0);
+  await expect(page.locator('[data-rule="bin|owned"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-rule="need|incoming"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('[data-rule="decks|owned"]');
   await page.fill('#n-name', 'Goblin Time');
   await page.click('[data-dlg="create"]');
   await expect(page.locator('.dhead .dn')).toContainText('Goblin Time');
@@ -76,9 +79,8 @@ async function createTaking(page) {
   await page.click('[data-act="check"]');
   await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Lightning Bolt\n1 Rhystic Study');
   await page.click('[data-act="chk-create"]');
-  await expect(page.locator('#n-takedecks')).not.toBeChecked();
-  await expect(page.locator('.takedecks')).toContainText('Lightning Bolt from Fixture Zagras');
-  await page.check('#n-takedecks');
+  await expect(page.locator('[data-rule="decks|swap"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.rule', { hasText: 'In other decks' })).toContainText('Lightning Bolt from Fixture Zagras');
   await page.fill('#n-name', 'Goblin Time');
   await page.click('[data-dlg="create"]');
   await expect(page.locator('.dhead .dn')).toContainText('Goblin Time');
@@ -138,4 +140,28 @@ test('undoing the move from the new deck works the same way', async ({ page }) =
   await page.reload();
   await page.click('[data-tab="history"]');
   await expect(page.locator('.hist')).not.toContainText('Goblin Time');
+});
+
+test('the rule buttons decide where each group goes', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Arcane Signet\n1 Lightning Bolt\n1 Rhystic Study');
+  await page.click('[data-act="chk-create"]');
+  // Bin card waits as incoming instead; other-deck card waits too; the not-owned card is already owned.
+  await page.click('[data-rule="bin|incoming"]');
+  await page.click('[data-rule="decks|incoming"]');
+  await page.click('[data-rule="need|owned"]');
+  await expect(page.locator('.rule', { hasText: 'Not owned' })).toContainText('add it as owned');
+  await page.fill('#n-name', 'Rules Test');
+  await page.click('[data-dlg="create"]');
+  const inc = page.locator('.inc');
+  await expect(inc).toContainText('Arcane Signet');
+  await expect(inc).toContainText('Lightning Bolt');
+  await expect(inc).not.toContainText('Rhystic Study');
+  await expect(deckRow(page, 'Rhystic Study')).toHaveCount(1);
+  await expect(deckRow(page, 'Krenko, Mob Boss')).toHaveCount(1);
+  // Nothing was taken from the bin or from Fixture Zagras.
+  await page.click('[data-act="home"]');
+  await expect(page.locator('.bin .row', { hasText: 'Arcane Signet' })).toContainText('2');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
 });
