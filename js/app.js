@@ -4,10 +4,12 @@
 let CARDS = [];
 let NAMES = [];
 const IDX = new Map();
+const OID = new Map(); // Scryfall oracle ID -> index in CARDS
 const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
 function indexCards(list) {
-  CARDS = Array.isArray(list) ? list : []; IDX.clear();
+  CARDS = Array.isArray(list) ? list : []; IDX.clear(); OID.clear();
   CARDS.forEach((r, i) => {
+    if (r[5]) OID.set(r[5], i);
     const k = norm(r[0]);
     if (!IDX.has(k)) IDX.set(k, i);
     if (r[0].includes(" // ")) { const f = norm(r[0].split(" // ")[0]); if (!IDX.has(f)) IDX.set(f, i); }
@@ -28,6 +30,25 @@ function cmcOf(n) {
   return t;
 }
 const isBasic = n => BASICS.has(norm(n));
+// Card records: [name, cost, type, colorIdentity, flags, oracleId, pairCode, copyLimit] (see scripts/build-cards.mjs)
+const F = { COMMANDER: 1, BANNED: 2, GAME_CHANGER: 4, NOT_LEGAL: 8 };
+const flagsOf = r => (r ? (r[4] | 0) : 0);
+const canLead = r => !!r && (flagsOf(r) & F.COMMANDER) > 0;
+const pairOf = r => (r && r[6]) || "";
+const limitOf = r => (r && r[7]) || 0;
+const isCmdrPick = r => canLead(r) || pairOf(r) === "BG";
+const hasRules = () => CARDS.length > 0 && CARDS[0].length >= 7; // false until the Scryfall card list is in use
+const recById = id => { const i = OID.get(id); return i === undefined ? null : CARDS[i]; };
+function validPair(a, b) {
+  const pa = pairOf(a), pb = pairOf(b);
+  if (pa === "P" && pb === "P") return true;
+  if (pa.startsWith("PW:") && pb.startsWith("PW:")) return norm(pa.slice(3)) === norm(b[0]) && norm(pb.slice(3)) === norm(a[0]);
+  if (pa === "FF" && pb === "FF") return true;
+  if ((pa === "CB" && pb === "BG") || (pa === "BG" && pb === "CB")) return true;
+  if ((pa === "DC" && pb === "TD") || (pa === "TD" && pb === "DC")) return true;
+  if (pa.startsWith("PV:") && pa === pb) return true;
+  return false;
+}
 
 // ---------- helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -317,13 +338,52 @@ function loadStore() {
     S.decks.set(d.id, d);
   }
   S.loose = data && data.bin && Array.isArray(data.bin.cards) ? data.bin : { cards: [] };
+  // Converts older decks to permanent card IDs (and follows any renames) without changing their history.
+  let changed = syncBinIds();
+  for (const d of S.decks.values()) if (syncDeckIds(d)) changed = true;
+  if (changed) persist();
 }
 window.addEventListener("pagehide", () => { if (persistTimer) { clearTimeout(persistTimer); persistNow(); } });
 window.addEventListener("storage", e => { if (e.key === STORE_KEY) { loadStore(); safeRender(); } });
-function save(d) { touch(d); S.decks.set(d.id, d); persist(); queueLookups(); return Promise.resolve(); }
+function cardLists(d) {
+  const out = [d.cur, d.orig, d.printed, d.bench && d.bench.out, d.bench && d.bench.in];
+  for (const e of d.log || []) { out.push(e.out, e.in, e.cards); if (e.from && Array.isArray(e.from.loose)) out.push(e.from.loose); }
+  return out.filter(Array.isArray);
+}
+function stampIds(list) { for (const x of list) if (x && x.n && !x.i) { const r = rec(x.n); if (r && r[5]) x.i = r[5]; } }
+function mergeSameName(list) {
+  const seen = new Map();
+  for (let k = 0; k < list.length; k++) { const x = list[k], p = seen.get(x.n); if (p) { p.q += x.q; list.splice(k--, 1); } else seen.set(x.n, x); }
+}
+// When the card list renames a card, decks follow it by ID. Returns true if anything changed.
+function syncDeckIds(d) {
+  const renames = new Map(); let stamped = false;
+  for (const list of cardLists(d)) for (const x of list) {
+    if (!x || !x.n) continue;
+    if (x.i) { const r = recById(x.i); if (r && r[0] !== x.n) { renames.set(x.n, r[0]); x.n = r[0]; } }
+    else { const r = rec(x.n); if (r && r[5]) { x.i = r[5]; stamped = true; } }
+  }
+  if (renames.size) {
+    const rn = n => renames.get(n) || n;
+    d.commanders = (d.commanders || []).map(rn);
+    if (d.artCard) d.artCard = rn(d.artCard);
+    if (d.artFor) d.artFor = rn(d.artFor);
+    [d.cur, d.orig, d.printed].forEach(l => Array.isArray(l) && mergeSameName(l));
+  }
+  return stamped || renames.size > 0;
+}
+function syncBinIds() {
+  let changed = false;
+  for (const c of S.loose.cards || []) {
+    if (c.i) { const r = recById(c.i); if (r && r[0] !== c.n) { c.n = r[0]; changed = true; } }
+    else { const r = rec(c.n); if (r && r[5]) { c.i = r[5]; changed = true; } }
+  }
+  return changed;
+}
+function save(d) { touch(d); cardLists(d).forEach(stampIds); S.decks.set(d.id, d); persist(); queueLookups(); return Promise.resolve(); }
 const benchTimers = new Map();
 function saveSoon(d) { touch(d); persist(); }
-function saveLoose() { S.loose.rev = Math.max(Date.now(), (S.loose.rev || 0) + 1); persist(); queueLookups(); }
+function saveLoose() { S.loose.rev = Math.max(Date.now(), (S.loose.rev || 0) + 1); stampIds(S.loose.cards || []); persist(); queueLookups(); }
 async function removeDeck(id) { S.decks.delete(id); persist(); }
 async function boot() {
   try {
@@ -345,24 +405,44 @@ const imgUrl = (n, v) => SCRY + encodeURIComponent(front(n)) + "&format=image&ve
 let EXTRA = {}; try { EXTRA = JSON.parse(localStorage.getItem("cdl-cards-extra") || "{}") || {}; } catch {}
 function addRec(r, alias) {
   let i = IDX.get(norm(r[0]));
-  if (i === undefined) { i = CARDS.push(r) - 1; const k = norm(r[0]); IDX.set(k, i); NAMES.push(k); if (r[0].includes(" // ")) { const f = norm(front(r[0])); if (!IDX.has(f)) IDX.set(f, i); } }
+  if (i === undefined) { i = CARDS.push(r) - 1; const k = norm(r[0]); IDX.set(k, i); NAMES.push(k); if (r[0].includes(" // ")) { const f = norm(front(r[0])); if (!IDX.has(f)) IDX.set(f, i); } if (r[5] && !OID.has(r[5])) OID.set(r[5], i); }
   if (alias && !IDX.has(alias)) IDX.set(alias, i);
 }
-function loadExtraCards() { for (const [alias, r] of Object.entries(EXTRA)) if (Array.isArray(r) && r.length === 5) addRec(r, alias); }
+function loadExtraCards() { for (const [alias, r] of Object.entries(EXTRA)) if (Array.isArray(r) && r.length >= 5) addRec(r, alias); }
 function scryCost(s) { return (s || "").split(" // ").map(f => (f.match(/\{([^}]+)\}/g) || []).map(x => x.slice(1, -1)).join(" ")).join(" // "); }
+function scryPair(text, typeLine) {
+  let m;
+  if ((m = text.match(/\bPartner with ([^\n(]+?)\s*(?:\(|$)/m))) return "PW:" + m[1].trim();
+  if ((m = text.match(/^Partner\s*[—-]\s*([^\n(]+?)\s*(?:\(|$)/m))) return "PV:" + m[1].trim();
+  if (/^Partner\s*(?:\(|$)/m.test(text)) return "P";
+  if (/^Friends forever\b/m.test(text)) return "FF";
+  if (/\bChoose a Background\b/i.test(text)) return "CB";
+  if (/\bDoctor's companion\b/i.test(text)) return "DC";
+  if (/\bBackground\b/.test(front(typeLine))) return "BG";
+  if (/\bTime Lord Doctor\b/.test(typeLine)) return "TD";
+  return "";
+}
 function scryRec(c) {
   if (!c || !c.name) return null;
   const faces = c.card_faces || [];
-  let cost = c.mana_cost;
-  if (cost === undefined || cost === null) cost = faces.length ? faces.map(f => f.mana_cost || "").filter((x, i) => i === 0 || c.layout === "split").join(" // ") : "";
-  const typeLine = front(c.type_line || (faces[0] && faces[0].type_line) || "");
-  const words = typeLine.split(/[\s—-]+/);
+  const cost = c.layout === "split" && faces.length ? faces.map(f => f.mana_cost || "").join(" // ") : (faces.length && faces[0].mana_cost !== undefined ? faces[0].mana_cost : c.mana_cost);
+  const typeLine = c.type_line || (faces[0] && faces[0].type_line) || "";
+  const frontType = faces.length && faces[0].type_line ? faces[0].type_line : front(typeLine);
+  const words = frontType.split(/[\s—-]+/);
   let tc = "O";
   for (const [w, code] of [["Creature", "C"], ["Planeswalker", "P"], ["Battle", "B"], ["Land", "L"], ["Instant", "I"], ["Sorcery", "S"], ["Artifact", "A"], ["Enchantment", "E"]]) if (words.includes(w)) { tc = code; break; }
   const ci = MANA_ORDER.split("").filter(x => (c.color_identity || []).includes(x)).join("");
-  const oracle = c.oracle_text || (faces[0] && faces[0].oracle_text) || "";
-  const legend = words.includes("Legendary") && (words.includes("Creature") || /can be your commander/i.test(oracle)) ? 1 : 0;
-  return [c.name, scryCost(cost), tc, ci, legend];
+  const text = [c.oracle_text, ...faces.map(f => f.oracle_text)].filter(Boolean).join("\n");
+  const legal = (c.legalities || {}).commander;
+  let flags = 0;
+  if ((words.includes("Legendary") && words.includes("Creature")) || /can be your commander/i.test(text)) flags |= F.COMMANDER;
+  if (legal === "banned") flags |= F.BANNED;
+  if (legal === "not_legal") flags |= F.NOT_LEGAL;
+  if (c.game_changer === true) flags |= F.GAME_CHANGER;
+  const r = [c.name, scryCost(cost), tc, ci, flags, c.oracle_id || "", scryPair(text, frontType)];
+  const any = /A deck can have any number of cards named/i.test(text); const upTo = text.match(/A deck can have up to (\w+) cards named/i);
+  if (any) r.push(-1); else if (upTo) r.push(({ seven: 7, nine: 9 })[upTo[1].toLowerCase()] || parseInt(upTo[1], 10) || 0);
+  return r;
 }
 const looked = new Set(); let lookTimer = null, looking = false;
 function queueLookups() { clearTimeout(lookTimer); lookTimer = setTimeout(runLookups, 500); }
@@ -383,7 +463,12 @@ async function runLookups() {
     await new Promise(ok => setTimeout(ok, 120));
   }
   looking = false;
-  if (added) { try { localStorage.setItem("cdl-cards-extra", JSON.stringify(EXTRA)); } catch {} safeRender(); }
+  if (added) {
+    try { localStorage.setItem("cdl-cards-extra", JSON.stringify(EXTRA)); } catch {}
+    let changed = syncBinIds(); for (const d of S.decks.values()) if (syncDeckIds(d)) changed = true;
+    if (changed) persist();
+    safeRender();
+  }
 }
 
 // hover previews (mouse) and tap previews (touch)
@@ -485,7 +570,7 @@ function renderLibrary() {
       <div>${ciPips(ci)}</div>
       <div class="stats"><span><b>${t}</b> in deck</span><span><b>${printedTotal(d)}</b> printed</span><span><b>${changes}</b> changes</span></div>
       ${toPrint ? `<div class="tp-pill"><b class="mono">${toPrint}</b> to print</div>` : `<div class="tp-pill done">All printed</div>`}
-      <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}</div>
+      <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
       <div class="tile-foot">${arch}</div>
     </div></div>`;
   }).join("")}</div>${renderBin()}`;
@@ -630,13 +715,13 @@ function applyImport(dl) {
     const d = clone(raw); delete d.art;
     if (!d.orig) d.orig = d.printed.filter(p => p.o === 0).map(p => ({ n: p.n, q: p.q }));
     d.bench = d.bench && Array.isArray(d.bench.out) ? d.bench : { out: [], in: [], note: "" };
-    touch(d); S.decks.set(d.id, d);
+    syncDeckIds(d); touch(d); S.decks.set(d.id, d);
   }
   for (const c of dl.bin) {
     const ex = S.loose.cards.find(x => x.n === c.n && (x.from || "") === (c.from || ""));
     if (ex) ex.q = c.q; else S.loose.cards.push({ n: c.n, q: c.q, from: c.from, at: c.at || Date.now() });
   }
-  S.loose.rev = Date.now(); persist(); queueLookups();
+  S.loose.rev = Date.now(); syncBinIds(); persist(); queueLookups();
   if (wasEmpty) lsSetNum(BACKUP_KEY, Date.now()); // the imported file is itself an up-to-date backup
 }
 function renderBin() {
@@ -668,6 +753,38 @@ function renderBin() {
   return h + `</div></section>`;
 }
 
+// Commander deck rules. Returns a list of problems; empty means the deck is legal.
+function legality(d) {
+  const issues = []; const cm = curMap(d); const t = total(d);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  if (t !== 100) issues.push({ kind: "count", text: t < 100 ? `${plural(100 - t, "card")} short of 100.` : `${plural(t - 100, "card")} over 100.` });
+  const cmds = (d.commanders || []).filter(n => cm.has(n));
+  if (!cmds.length) issues.push({ kind: "commander", text: "No commander chosen. Pick one in Edit details." });
+  else if (cmds.length > 2) issues.push({ kind: "commander", text: `A deck can have at most two commanders; this one has ${cmds.length}.` });
+  else if (hasRules()) {
+    const rs = cmds.map(rec);
+    if (cmds.length === 1 && rs[0] && !canLead(rs[0])) issues.push({ kind: "commander", text: `${cmds[0]} can't be a commander.`, cards: cmds });
+    if (cmds.length === 2 && rs[0] && rs[1] && !validPair(rs[0], rs[1])) issues.push({ kind: "commander", text: `${cmds[0]} and ${cmds[1]} can't be commanders together.`, cards: cmds });
+  }
+  const banned = [], notLegal = [], extra = [], off = [];
+  for (const c of d.cur) {
+    const r = rec(c.n); if (!r) continue;
+    const f = flagsOf(r);
+    if (f & F.BANNED) banned.push(c.n); else if (f & F.NOT_LEGAL) notLegal.push(c.n);
+    const lim = limitOf(r);
+    if (!isBasic(c.n) && lim !== -1 && c.q > (lim > 0 ? lim : 1)) extra.push(c.n);
+    if (outsideCI(d, c.n)) off.push(c.n);
+  }
+  if (banned.length) issues.push({ kind: "banned", text: `${plural(banned.length, "card")} banned in Commander.`, cards: banned });
+  if (notLegal.length) issues.push({ kind: "notlegal", text: `${plural(notLegal.length, "card")} not legal in Commander (for example Un-set or digital-only cards).`, cards: notLegal });
+  if (extra.length) issues.push({ kind: "singleton", text: `${plural(extra.length, "card")} with more copies than allowed. Commander allows one of each card except basic lands.`, cards: extra });
+  if (off.length) issues.push({ kind: "colors", text: `${plural(off.length, "card")} outside your commander's colors.`, cards: off });
+  return issues;
+}
+function renderChecks(d, issues) {
+  if (!issues.length || !S.showChecks) return "";
+  return `<div class="checks" id="deck-checks"><ul>${issues.map(x => `<li><span class="flag bad">${esc({ count: "Count", commander: "Commander", banned: "Banned", notlegal: "Not legal", singleton: "Singleton", colors: "Colors" }[x.kind])}</span><span>${esc(x.text)}${x.cards && x.cards.length ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul></div>`;
+}
 function renderDeck(d) {
   const t = total(d); const ci = deckCI(d); const removed = removedList(d);
   const changes = d.log.filter(isChange); const histCount = d.log.filter(e => e.kind !== "create").length;
@@ -676,7 +793,7 @@ function renderDeck(d) {
   const mx = Math.max(1, ...curve);
   const lands = d.cur.filter(c => typeOf(c.n) === "L").reduce((a, c) => a + c.q, 0);
   const unknown = d.cur.filter(c => !rec(c.n)).length;
-  const offColor = d.cur.filter(c => outsideCI(d, c.n)).length;
+  const issues = legality(d);
   const toPrint = qsum(unprinted(d));
   const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : "No commander set";
   let h = `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
@@ -695,8 +812,8 @@ function renderDeck(d) {
     <div class="k"><span class="label">To print</span><span class="v ${toPrint ? "warn" : "ok"}">${toPrint}</span></div>
     <div class="k"><span class="label">Changes</span><span class="v">${changes.length}</span></div>
     <div class="k"><span class="label">Curve</span><div class="curve">${curve.map(v => `<div style="height:${Math.round(v / mx * 100)}%" title="${v}"></div>`).join("")}</div><div class="curve-l">${curve.map((_, i) => `<span>${i === 7 ? "7+" : i}</span>`).join("")}</div></div>
-    ${unknown || offColor ? `<div class="k"><span class="label">Check</span><span style="font-size:13px">${unknown ? `<span class="flag warn" style="margin:0">${unknown} unrecognized</span> ` : ""}${offColor ? `<span class="flag bad" style="margin:0">${offColor} outside colors</span>` : ""}</span></div>` : ""}
-  </div>
+    <div class="k"><span class="label">Rules</span><span class="checkcell">${issues.length ? `<button class="flag bad flagbtn" data-act="toggle-checks" aria-expanded="${!!S.showChecks}" aria-controls="deck-checks">${issues.length} issue${issues.length === 1 ? "" : "s"} ${S.showChecks ? "▴" : "▾"}</button>` : `<span class="flag good" style="margin:0">Legal</span>`}${unknown ? `<span class="flag warn" style="margin:0">${unknown} unrecognized</span>` : ""}</span></div>
+  </div>${renderChecks(d, issues)}
   <div class="layout"><div style="min-width:0">
     <div class="tabs" role="tablist">
       ${tabBtn("current", "Current list", t)}
@@ -743,7 +860,9 @@ function renderCurrent(d) {
       const r = rec(c.n); const st = staged.get(c.n); const pq = Math.min(pm.get(c.n) || 0, c.q);
       const prFlag = pq >= c.q ? "" : pq > 0 ? `<span class="flag warn">${pq} of ${c.q} printed</span>` : '<span class="flag warn">Not printed</span>';
       const inBin = pq < c.q && bin.has(c.n) ? `<button class="flag good flagbtn" title="Move a printed copy from the bin into this deck" data-binmove="${esc(JSON.stringify([c.n, d.id]))}">In bin · move here</button>` : "";
-      const flags = prFlag + inBin + (!r ? '<span class="flag warn">Unrecognized</span>' : "") + (outsideCI(d, c.n) ? '<span class="flag bad">Outside colors</span>' : "") + (st ? `<span class="flag bad">Cutting${c.q > 1 ? " " + st : ""}</span>` : "");
+      const rf = flagsOf(r), lim = limitOf(r);
+      const ruleFlags = (rf & F.BANNED ? '<span class="flag bad">Banned</span>' : rf & F.NOT_LEGAL ? '<span class="flag bad">Not legal</span>' : "") + (r && !isBasic(c.n) && lim !== -1 && c.q > (lim > 0 ? lim : 1) ? '<span class="flag bad">Too many copies</span>' : "");
+      const flags = prFlag + inBin + ruleFlags + (!r ? '<span class="flag warn">Unrecognized</span>' : "") + (outsideCI(d, c.n) ? '<span class="flag bad">Outside colors</span>' : "") + (st ? `<span class="flag bad">Cutting${c.q > 1 ? " " + st : ""}</span>` : "");
       h += `<div class="row${st ? " staged-out" : ""}" draggable="true" data-drag="cur" data-name="${esc(c.n)}">
         <span class="q">${c.q}</span><span class="nm"><span>${esc(c.n)}</span>${flags}</span>${r ? pipsFor(r[1]) : "<span></span>"}
         <span class="acts">${pq >= c.q ? `<span class="iconbtn done" title="Printed" aria-label="Printed">${ICONS.printed}</span>` : `<button class="iconbtn todo" title="Mark ${esc(c.n)} as printed" aria-label="Mark ${esc(c.n)} as printed" data-print="${esc(c.n)}">${ICONS.print}</button>`}<button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button><a class="iconbtn" href="${scry(c.n)}" target="_blank" rel="noopener" title="Open on Scryfall" aria-label="Open ${esc(c.n)} on Scryfall">${ICONS.ext}</a></span></div>`;
@@ -855,10 +974,10 @@ function suggest(q, side, d) {
     const r = CARDS[i]; if (seen.has(r[0])) continue;
     if (cm.has(r[0]) && !isBasic(r[0])) continue;
     const off = has && [...r[3]].some(c => !ci.includes(c));
-    (k.startsWith(f) ? starts : contains).push({ n: r[0], off, cost: r[1] });
+    (k.startsWith(f) ? starts : contains).push({ n: r[0], off, cost: r[1], banned: !!(flagsOf(r) & (F.BANNED | F.NOT_LEGAL)) });
   }
-  const pool = [...starts, ...contains].sort((a, b) => (a.off - b.off));
-  for (const p of pool) { if (res.length >= 10) break; res.push({ n: p.n, tag: p.off ? "Outside colors" : "", cost: p.cost, off: p.off }); }
+  const pool = [...starts, ...contains].sort((a, b) => (a.off + a.banned) - (b.off + b.banned));
+  for (const p of pool) { if (res.length >= 10) break; res.push({ n: p.n, tag: p.banned ? "Banned" : p.off ? "Outside colors" : "", cost: p.cost, off: p.off || p.banned }); }
   if (!res.some(r => norm(r.n) === f)) res.push({ n: q.trim(), free: true });
   return res;
 }
@@ -933,7 +1052,7 @@ function renderDialog() {
     <footer><span class="grow">This list is saved as the deck's original list.</span><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="create">Create deck</button></footer></div>`;
   } else if (dl.kind === "edit") {
     const d = S.decks.get(dl.id);
-    const leg = d.cur.filter(c => { const r = rec(c.n); return r && r[4]; }).map(c => c.n);
+    const leg = d.cur.filter(c => isCmdrPick(rec(c.n))).map(c => c.n);
     const opts = [...new Set([...(d.commanders || []), ...leg])];
     h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><h2 id="dlg-t">Edit details</h2><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">
@@ -1045,7 +1164,7 @@ function updateNewParse() {
   const p = parseList(ta.value); const dl = S.dialog; dl.parsed = p;
   if (!p.cards.length) { el.innerHTML = ""; return; }
   const t = p.cards.reduce((a, c) => a + c.q, 0);
-  const leg = p.cards.filter(c => { const r = rec(c.n); return r && r[4]; }).map(c => c.n);
+  const leg = p.cards.filter(c => isCmdrPick(rec(c.n))).map(c => c.n);
   if (!dl.cmdTouched) dl.cmds = p.commanders.length ? p.commanders : (leg.length === 1 ? leg : []);
   const opts = [...new Set([...p.commanders, ...leg])];
   el.innerHTML = `<div class="parse-sum"><span><b class="mono">${t}</b> cards</span><span><b class="mono">${p.cards.length}</b> unique</span>${p.unknown.length ? `<span class="unk">${p.unknown.length} not recognized: ${p.unknown.slice(0, 6).map(esc).join(", ")}${p.unknown.length > 6 ? "…" : ""}</span>` : '<span style="color:var(--good)">All names recognized</span>'}</div>
@@ -1107,6 +1226,7 @@ document.addEventListener("click", e => {
   if (act === "reg-close") { S.reg = null; return render(); }
   if (act === "reg-go") { if (S.reg !== "running") startRefresh(); return; }
   if (act === "export") return exportBackup();
+  if (act === "toggle-checks") { S.showChecks = !S.showChecks; return render(); }
   if (act === "backup-snooze") { lsSetNum(SNOOZE_KEY, Date.now() + 3 * DAY); return render(); }
   if (act === "example") {
     fetch("data/example-deck.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(ex => {

@@ -1,0 +1,333 @@
+{
+ "app": "commander-deck-ledger",
+ "version": 1,
+ "exported": "2026-10-27T00:00:00Z",
+ "decks": [
+  {
+   "v": 1,
+   "id": "rules-broken",
+   "name": "Broken Brew",
+   "commanders": [
+    "Thrasios, Triton Hero",
+    "Wilson, Refined Grizzly"
+   ],
+   "createdAt": 1761000000000,
+   "updatedAt": 1761000000000,
+   "cur": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1
+    },
+    {
+     "n": "Wilson, Refined Grizzly",
+     "q": 1
+    },
+    {
+     "n": "Black Lotus",
+     "q": 1
+    },
+    {
+     "n": "Lightning Bolt",
+     "q": 2
+    },
+    {
+     "n": "Relentless Rats",
+     "q": 5
+    },
+    {
+     "n": "Seven Dwarves",
+     "q": 8
+    },
+    {
+     "n": "Island",
+     "q": 20
+    }
+   ],
+   "orig": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1
+    },
+    {
+     "n": "Wilson, Refined Grizzly",
+     "q": 1
+    },
+    {
+     "n": "Black Lotus",
+     "q": 1
+    },
+    {
+     "n": "Lightning Bolt",
+     "q": 2
+    },
+    {
+     "n": "Relentless Rats",
+     "q": 5
+    },
+    {
+     "n": "Seven Dwarves",
+     "q": 8
+    },
+    {
+     "n": "Island",
+     "q": 20
+    }
+   ],
+   "printed": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Wilson, Refined Grizzly",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Black Lotus",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Lightning Bolt",
+     "q": 2,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Relentless Rats",
+     "q": 5,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Seven Dwarves",
+     "q": 8,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Island",
+     "q": 20,
+     "at": 1761000000000,
+     "o": 0
+    }
+   ],
+   "log": [
+    {
+     "id": "rules-broken0",
+     "t": 1761000000000,
+     "kind": "create",
+     "count": 38
+    }
+   ],
+   "bench": {
+    "out": [],
+    "in": [],
+    "note": ""
+   }
+  },
+  {
+   "v": 1,
+   "id": "rules-legal",
+   "name": "Partners",
+   "commanders": [
+    "Thrasios, Triton Hero",
+    "Kraum, Ludevic's Opus"
+   ],
+   "createdAt": 1761000000000,
+   "updatedAt": 1761000000000,
+   "cur": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1
+    },
+    {
+     "n": "Kraum, Ludevic's Opus",
+     "q": 1
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1
+    },
+    {
+     "n": "Command Tower",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 96
+    }
+   ],
+   "orig": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1
+    },
+    {
+     "n": "Kraum, Ludevic's Opus",
+     "q": 1
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1
+    },
+    {
+     "n": "Command Tower",
+     "q": 1
+    },
+    {
+     "n": "Island",
+     "q": 96
+    }
+   ],
+   "printed": [
+    {
+     "n": "Thrasios, Triton Hero",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Kraum, Ludevic's Opus",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Sol Ring",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Command Tower",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Island",
+     "q": 96,
+     "at": 1761000000000,
+     "o": 0
+    }
+   ],
+   "log": [
+    {
+     "id": "rules-legal0",
+     "t": 1761000000000,
+     "kind": "create",
+     "count": 100
+    }
+   ],
+   "bench": {
+    "out": [],
+    "in": [],
+    "note": ""
+   }
+  },
+  {
+   "v": 1,
+   "id": "rules-renamed",
+   "name": "Renamed",
+   "commanders": [
+    "Pir, Imaginative Rascal",
+    "Toothy, Imaginary Friend"
+   ],
+   "createdAt": 1761000000000,
+   "updatedAt": 1761000000000,
+   "cur": [
+    {
+     "n": "Pir, Imaginative Rascal",
+     "q": 1
+    },
+    {
+     "n": "Toothy, Imaginary Friend",
+     "q": 1
+    },
+    {
+     "n": "Ye Olde Sol Ring",
+     "q": 1,
+     "i": "00000000-0000-0000-0000-000000000010"
+    },
+    {
+     "n": "Island",
+     "q": 97
+    }
+   ],
+   "orig": [
+    {
+     "n": "Pir, Imaginative Rascal",
+     "q": 1
+    },
+    {
+     "n": "Toothy, Imaginary Friend",
+     "q": 1
+    },
+    {
+     "n": "Ye Olde Sol Ring",
+     "q": 1,
+     "i": "00000000-0000-0000-0000-000000000010"
+    },
+    {
+     "n": "Island",
+     "q": 97
+    }
+   ],
+   "printed": [
+    {
+     "n": "Pir, Imaginative Rascal",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Toothy, Imaginary Friend",
+     "q": 1,
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Ye Olde Sol Ring",
+     "q": 1,
+     "i": "00000000-0000-0000-0000-000000000010",
+     "at": 1761000000000,
+     "o": 0
+    },
+    {
+     "n": "Island",
+     "q": 97,
+     "at": 1761000000000,
+     "o": 0
+    }
+   ],
+   "log": [
+    {
+     "id": "rules-renamed0",
+     "t": 1761000000000,
+     "kind": "create",
+     "count": 100
+    }
+   ],
+   "bench": {
+    "out": [],
+    "in": [],
+    "note": ""
+   }
+  }
+ ],
+ "bin": {
+  "cards": [
+   {
+    "n": "Swamp",
+    "q": 3,
+    "at": 1761000000000
+   }
+  ]
+ }
+}

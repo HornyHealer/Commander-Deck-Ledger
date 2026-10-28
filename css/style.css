@@ -377,3 +377,15 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .backup-warn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 16px; padding: 10px 12px; font-size: 13px; background: repeating-linear-gradient(-45deg, var(--warn-soft) 0 8px, var(--surface) 8px 16px); outline: 1px solid var(--warn); outline-offset: -1px; }
 .backup-warn > span:first-child { flex: 1 1 340px; min-width: 0; }
 .backup-warn .grow { display: none; }
+
+/* deck rules check */
+.checkcell { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+.checkcell .flag { margin: 0; }
+.checks { margin: -10px 0 20px; background: var(--surface); outline: 1px solid var(--bad); outline-offset: -1px; padding: 6px 14px; }
+.checks ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.checks li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
+.checks li:last-child { border-bottom: 0; }
+.checks li .flag { justify-self: start; margin: 0; }
+.checks small { display: block; color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .02em; margin-top: 3px; overflow-wrap: anywhere; }
+.rule-issues { color: var(--bad); }
+@media (max-width: 520px) { .checks li { grid-template-columns: 1fr; gap: 4px; } }

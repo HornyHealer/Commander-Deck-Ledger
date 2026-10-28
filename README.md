@@ -11,11 +11,18 @@ Track Commander decks: every swap, every cut, every card you've printed, and a b
 | `index.html` | The page shell |
 | `css/style.css` | All styling |
 | `js/app.js` | All of the app's code |
-| `data/cards.json` | The built-in card list (name, mana cost, type, color identity, commander-eligible) |
+| `data/cards.json` | The card list, built from Scryfall: name, mana cost, type, color identity, Commander legality, Game Changer status, partner rules and Scryfall's permanent card ID |
+| `scripts/build-cards.mjs` | Builds `data/cards.json` from Scryfall's bulk data |
 | `data/example-deck.json` | The "Try an example deck" deck |
 | `tests/` | Automatic tests |
 
 Each visitor's decks are saved in their own browser. Nothing is sent to a server.
+
+## Card list updates
+
+Every Tuesday GitHub rebuilds the card list from Scryfall and commits it if anything changed. To update it right away, open the **Actions** tab, choose **Test and deploy**, and click **Run workflow**.
+
+Decks store each card's permanent Scryfall ID, so a card that gets renamed keeps working.
 
 ## Publishing
 
