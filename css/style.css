@@ -482,3 +482,8 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .inc-have { font-size: 12px; color: var(--muted); }
 .inc-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .inc-acts .btn .mono { margin-left: 6px; }
+.summary .inc-note { color: var(--cyan); margin-top: 2px; }
+.summary .v.inc-v { color: var(--cyan); }
+.fhint { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.dialog textarea.field.short { min-height: 72px; height: 72px; font: 13px/1.5 var(--body); }
+.dialog #n-wait.field.short { font: 12px/1.6 var(--mono); }

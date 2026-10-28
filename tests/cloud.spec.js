@@ -56,16 +56,18 @@ test('changes sync to the account and are there after a reload', async ({ page }
   await page.locator('.signin-note [data-act="signin"]').click();
   await expect(page.locator('#sync-status')).toHaveText('Synced');
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
-  await page.click('[data-print="Typhoid Rats"]');
+  // Typhoid Rats wasn't owned in the backup, so it waits as incoming; it arrives now.
+  await page.locator('.inc [data-arrive]').click();
   await expect.poll(async () => {
     const s = await fakeStore(page);
-    return (s[STORE + 'fixture-rats'].printed || []).some(p => p.n === 'Typhoid Rats');
+    return (s[STORE + 'fixture-rats'].printed || []).some(p => p.n === 'Typhoid Rats') && !(s[STORE + 'fixture-rats'].incoming || []).length;
   }).toBe(true);
   await page.reload();
   await expect(page.locator('.acct')).toBeVisible();
   // The page reopens the deck that was showing, now loaded from the account.
   await expect(page.locator('.dhead .dn')).toContainText('Rat Pack');
-  await expect(page.locator('.row', { hasText: 'Typhoid Rats' })).not.toContainText('Not printed');
+  await expect(page.locator('.groups .row', { hasText: 'Typhoid Rats' })).toHaveCount(1);
+  await expect(page.locator('.inc')).toHaveCount(0);
 });
 
 test('a change made on another device shows up', async ({ page }) => {

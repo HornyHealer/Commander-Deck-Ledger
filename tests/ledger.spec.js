@@ -54,32 +54,35 @@ test('importing a backup keeps the decks after a reload @phone', async ({ page }
   await importBackup(page);
   await page.reload();
   await expect(page.locator('.deckbox')).toHaveCount(2);
-  await expect(page.locator('.deckbox', { hasText: 'Rat Pack' })).toContainText('1 to print');
+  // Rat Pack's Typhoid Rats wasn't marked owned in the backup, so it became an incoming card.
+  await expect(page.locator('.deckbox', { hasText: 'Rat Pack' })).toContainText('1 incoming');
   await expect(page.locator('.deckbox', { hasText: 'Rat Pack' }).locator('a.arch')).toHaveAttribute('href', /archidekt\.com/);
 });
 
-test('a swap is recorded in history and the new card can be marked printed', async ({ page }) => {
+test('a swap is recorded in history and the new card counts as owned', async ({ page }) => {
   await importBackup(page);
   await openDeck(page, 'Rat Pack');
-  await page.click('[data-cut="Typhoid Rats"]');
+  await page.click('[data-cut="Sol Ring"]');
   await page.fill('#s-in', 'Brainstorm');
   await page.locator('#g-in button .nm', { hasText: /^Brainstorm$/ }).click();
   await page.click('[data-act="commit"]');
   await page.click('[data-tab="history"]');
-  await expect(page.locator('.hist .entry').first()).toContainText('Typhoid Rats');
+  await expect(page.locator('.hist .entry').first()).toContainText('Sol Ring');
   await expect(page.locator('.hist .entry').first()).toContainText('Brainstorm');
-  await page.click('[data-tab="current"]');
-  const row = page.locator('.row', { hasText: 'Brainstorm' });
-  await expect(row).toContainText('Not printed');
-  await page.click('[data-print="Brainstorm"]');
-  await expect(row).not.toContainText('Not printed');
+  await page.click('[data-tab="printed"]');
+  await expect(page.locator('.tab.on')).toContainText('Owned');
+  await expect(page.locator('.plist .row', { hasText: 'Brainstorm' })).toContainText('In deck');
+  // Undo takes the new card back off the owned list.
   await page.click('[data-tab="history"]');
-  await expect(page.locator('.hist .entry').first()).toContainText('Printed 1 card');
+  await page.click('[data-act="undo"]');
+  await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="printed"]');
+  await expect(page.locator('.plist .row', { hasText: 'Brainstorm' })).toHaveCount(0);
 });
 
 test.describe('copying lists', () => {
   test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
-  test('copies the deck and the unprinted cards in "1x Name" format', async ({ page }) => {
+  test('copies the deck and the incoming cards in "1x Name" format', async ({ page }) => {
     await importBackup(page);
     await openDeck(page, 'Rat Pack');
     await page.click('[data-act="copy-menu"]');
@@ -87,6 +90,7 @@ test.describe('copying lists', () => {
     const all = await page.evaluate(() => navigator.clipboard.readText());
     expect(all.split('\n')[0]).toBe("1x Captain N'ghathrod [Commander]");
     expect(all).toContain('5x Island');
+    expect(all).not.toContain('Typhoid Rats');
     await page.click('[data-act="copy-menu"]');
     await page.click('.menu [data-act="copy-toprint"]');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('1x Typhoid Rats');
@@ -101,9 +105,12 @@ test('cards can be added straight to the bin and moved into a deck that needs th
   const bin = page.locator('.bin');
   await expect(bin.locator('.group h3', { hasText: 'Lands' })).toBeVisible();
   await expect(bin.locator('.row', { hasText: 'Lightning Bolt' })).toContainText('Added directly');
-  // The example deck has a spare printed Typhoid Rats, which Rat Pack still needs.
+  // Fixture Zagras has a spare Typhoid Rats, which Rat Pack's incoming change needs.
+  await expect(bin).toContainText('needed by an incoming change');
   await bin.getByRole('button', { name: 'Move to Rat Pack' }).click();
-  await expect(page.locator('.deckbox', { hasText: 'Rat Pack' })).toContainText('All printed');
+  await openDeck(page, 'Rat Pack');
+  await expect(page.locator('.inc .inc-have')).toContainText('Already in your box: Typhoid Rats');
+  await expect(page.locator('.inc [data-inc-copy]')).toHaveCount(0);
 });
 
 test('All cards filters by color with the Exactly and At most modes', async ({ page }) => {
@@ -129,7 +136,7 @@ test('export downloads a backup and the reminder tracks it', async ({ page }) =>
   // Pretend the last backup was 20 days ago: the reminder should appear.
   await page.evaluate(() => localStorage.setItem('cdl-last-backup', String(Date.now() - 20 * 86400000)));
   await openDeck(page, 'Rat Pack');
-  await page.click('[data-print="Typhoid Rats"]');
+  await page.locator('.inc [data-arrive]').click();
   await page.click('[data-act="home"]');
   await expect(page.locator('.backup-warn')).toContainText('Back up your decks');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('.backup-warn [data-act="export"]').click()]);
@@ -167,7 +174,11 @@ test('hovering a card name shows its picture', async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop');
   await importBackup(page);
   await openDeck(page, 'Rat Pack');
-  await page.locator('.row .nm > span:first-child', { hasText: 'Sol Ring' }).hover();
+  const name = page.locator('.row .nm > span:first-child', { hasText: 'Sol Ring' });
+  // Scroll first: scrolling hides the preview, as it should when someone scrolls the page.
+  await name.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+  await name.hover();
   await expect(page.locator('.cardpv')).toBeVisible();
   await expect(page.locator('.cardpv img')).toHaveAttribute('src', /exact=Sol%20Ring/);
 });
@@ -178,4 +189,15 @@ test('tapping a card name on a phone shows its picture @phone', async ({ page },
   await openDeck(page, 'Rat Pack');
   await page.locator('.row .nm > span:first-child', { hasText: 'Sol Ring' }).tap();
   await expect(page.locator('.cardpv.tap')).toBeVisible();
+});
+
+test('cards not marked owned in an older backup become an incoming change', async ({ page }) => {
+  await importBackup(page);
+  await openDeck(page, 'Rat Pack');
+  await expect(page.locator('.groups .row', { hasText: 'Typhoid Rats' })).toHaveCount(0);
+  await expect(page.locator('.inc')).toContainText('Typhoid Rats');
+  await page.click('[data-tab="removed"]');
+  await expect(page.locator('.plist .row', { hasText: 'Typhoid Rats' })).toHaveCount(0);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry').first()).toContainText('not owned yet to incoming');
 });

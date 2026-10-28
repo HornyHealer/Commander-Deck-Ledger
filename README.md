@@ -2,7 +2,7 @@
 
 [![Test and deploy](https://github.com/HornyHealer/Commander-Deck-Ledger/actions/workflows/test-and-deploy.yml/badge.svg)](https://github.com/HornyHealer/Commander-Deck-Ledger/actions/workflows/test-and-deploy.yml)
 
-Track Commander decks: every swap, every cut, every card you've printed, and a bin for spare copies.
+Track Commander decks: every swap, every cut, every card you own, cards on the way, and a bin for spare copies.
 
 ## How the site is organized
 
@@ -33,7 +33,11 @@ Decks store each card's permanent Scryfall ID, so a card that gets renamed keeps
 
 ## Incoming cards
 
-When cards are on the way (printed, bought or borrowed), stage the swap on the bench and press **Save as incoming** instead of **Save change**. The deck list stays as it is, so it keeps matching what's in the box: outgoing cards show a Leaving tag and the change waits in an Incoming strip above the list. Press **Arrived** when the cards are in hand to apply the swap and mark the new cards printed. A deck can have several incoming changes at once, and an arrival can be undone from History.
+When cards are on the way (printed, bought or borrowed), stage the swap on the bench and press **Save as incoming** instead of **Save change**. The deck list stays as it is, so it keeps matching what's in the box: outgoing cards show a Leaving tag and the change waits in an Incoming strip above the list. Press **Arrived** when the cards are in hand to apply the swap and add the new cards to the deck's owned list. A deck can have several incoming changes at once, and an arrival can be undone from History.
+
+Every card in a deck's list counts as owned, however you got it (printed, bought or traded), so **Save change** adds new cards to the owned list right away. When creating a deck, cards you don't have yet go in the optional **Still waiting on** box and start out as an incoming change. Decks from older versions of the site that had cards not marked as owned are converted automatically: those cards move into an incoming change.
+
+In the saved data the owned list is still stored as `printed`, so older backups and synced decks keep working.
 
 ## Bracket and roles
 
