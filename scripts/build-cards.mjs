@@ -11,6 +11,7 @@
 //              FF friends forever, CB choose a Background, BG is a Background, DC Doctor's companion, TD Time Lord Doctor
 //   copyLimit  -1 any number of copies allowed, N up to N copies; left out for normal singleton cards
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -99,16 +100,35 @@ export function sanityCheck(list) {
   return problems;
 }
 
+// Finds the bulk file's address in Scryfall's response. Older responses used "download_uri";
+// this also accepts other field names or a list of files, preferring uncompressed JSON.
+export function findDownloadUrl(info) {
+  if (!info || typeof info !== 'object') return '';
+  if (typeof info.download_uri === 'string') return info.download_uri;
+  const found = [];
+  const walk = v => {
+    if (typeof v === 'string') { if (/^https:\/\/[^\s]+\.json(\.gz)?(\?.*)?$/i.test(v) && !/api\.scryfall\.com\/bulk-data/i.test(v)) found.push(v); }
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(info);
+  return found.find(u => !/\.gz(\?|$)/i.test(u)) || found[0] || '';
+}
+
 const HEADERS = { 'User-Agent': 'CommanderDeckLedger/1.0 (+https://github.com/HornyHealer/Commander-Deck-Ledger)', Accept: 'application/json' };
 
 async function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const info = await (await fetch('https://api.scryfall.com/bulk-data/oracle-cards', { headers: HEADERS })).json();
-  if (!info.download_uri) throw new Error('Scryfall did not return a download link: ' + JSON.stringify(info).slice(0, 300));
-  console.log(`Downloading ${info.download_uri} (updated ${info.updated_at})`);
-  const res = await fetch(info.download_uri, { headers: HEADERS });
+  const url = findDownloadUrl(info);
+  if (!url) throw new Error('Scryfall did not return a download link. Fields: ' + Object.keys(info).join(', ') + ' ' + JSON.stringify(info).slice(300, 900));
+  console.log(`Downloading ${url} (updated ${info.updated_at})`);
+  const res = await fetch(url, { headers: { 'User-Agent': HEADERS['User-Agent'], Accept: '*/*' } });
   if (!res.ok) throw new Error('Download failed: HTTP ' + res.status);
-  const cards = JSON.parse(await res.text());
+  let buf = Buffer.from(await res.arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b) buf = gunzipSync(buf); // compressed file
+  const cards = JSON.parse(buf.toString('utf8'));
+  if (!Array.isArray(cards)) throw new Error('Expected a list of cards, got: ' + JSON.stringify(cards).slice(0, 300));
   const list = transform(cards);
   const problems = sanityCheck(list);
   if (problems.length) throw new Error('Card list looks wrong, not saving it: ' + problems.join('; '));

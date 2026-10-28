@@ -54,3 +54,10 @@ test('refuses to save a list that looks broken', async ({}, info) => {
   test.skip(info.project.name !== 'desktop');
   expect(m.sanityCheck(m.transform(sample)).join(' ')).toContain('only');
 });
+
+test('finds the download link in old and new Scryfall responses', async ({}, info) => {
+  test.skip(info.project.name !== 'desktop');
+  expect(m.findDownloadUrl({ download_uri: 'https://data.scryfall.io/oracle-cards/x.json' })).toBe('https://data.scryfall.io/oracle-cards/x.json');
+  expect(m.findDownloadUrl({ object: 'bulk_data', uri: 'https://api.scryfall.com/bulk-data/abc', files: [{ url: 'https://data.scryfall.io/oracle-cards/x.json.gz' }, { url: 'https://data.scryfall.io/oracle-cards/x.json' }] })).toBe('https://data.scryfall.io/oracle-cards/x.json');
+  expect(m.findDownloadUrl({ object: 'bulk_data', uri: 'https://api.scryfall.com/bulk-data/abc' })).toBe('');
+});
