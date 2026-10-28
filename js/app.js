@@ -72,6 +72,7 @@ const ICONS = {
   refresh: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5V5h-2.5"/></svg>',
   down: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>',
   up: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 10.5v-8M4.5 6 8 2.5 11.5 6M3 13.5h10"/></svg>',
+  user: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5.5" r="2.8"/><path d="M2.5 14c.8-2.8 3-4.3 5.5-4.3s4.7 1.5 5.5 4.3"/></svg>',
   stack: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="2" width="8" height="10.5" rx="1"/><path d="M2.5 4.5v9h7.5"/></svg>',
   print: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 6V2.5h7V6"/><rect x="2" y="6" width="12" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/></svg>',
   printed: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m3.5 8.5 3 3 6-7"/></svg>',
@@ -313,9 +314,10 @@ function backupStatus() {
   return { last, days, stale: S.decks.size > 0 && changed && due, snoozed: lsNum(SNOOZE_KEY) > Date.now() };
 }
 const agoText = days => days === 0 ? "today" : days === 1 ? "yesterday" : days + " days ago";
-function persist() { clearTimeout(persistTimer); persistTimer = setTimeout(persistNow, 150); }
+function persist() { clearTimeout(persistTimer); persistTimer = setTimeout(persistNow, CLOUD.user ? 600 : 150); }
 function persistNow() {
   persistTimer = null;
+  if (CLOUD.user) return cloudFlush();
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({ v: 1, decks: [...S.decks.values()], bin: S.loose }));
     if (!storageOK) { storageOK = true; S.live = true; render(); }
@@ -325,6 +327,16 @@ function persistNow() {
     toast(full ? "Your browser's storage for this site is full. Export a backup, then delete old decks." : "Couldn't save. Your browser may be blocking storage for this site.");
     if (!full) { storageOK = false; S.live = false; render(); }
   }
+}
+function normalizeDeck(d) {
+  if (!d.orig) d.orig = (d.printed || []).filter(p => p.o === 0).map(p => ({ n: p.n, q: p.q }));
+  if (!d.bench) d.bench = { out: [], in: [], note: "" };
+  if (!Array.isArray(d.log)) d.log = [];
+  if (!Array.isArray(d.printed)) d.printed = [];
+  return d;
+}
+function readLocalStore() {
+  try { const raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 function loadStore() {
   let raw = null;
@@ -344,7 +356,7 @@ function loadStore() {
   if (changed) persist();
 }
 window.addEventListener("pagehide", () => { if (persistTimer) { clearTimeout(persistTimer); persistNow(); } });
-window.addEventListener("storage", e => { if (e.key === STORE_KEY) { loadStore(); safeRender(); } });
+window.addEventListener("storage", e => { if (e.key === STORE_KEY && !CLOUD.user) { loadStore(); safeRender(); } });
 function cardLists(d) {
   const out = [d.cur, d.orig, d.printed, d.bench && d.bench.out, d.bench && d.bench.in];
   for (const e of d.log || []) { out.push(e.out, e.in, e.cards); if (e.from && Array.isArray(e.from.loose)) out.push(e.from.loose); }
@@ -393,9 +405,152 @@ async function boot() {
   } catch { S.cardsFailed = true; }
   loadExtraCards();
   loadStore();
+  await cloudInit();
   S.ready = true; S.live = storageOK;
-  if (S.view === "deck" && !S.decks.has(S.deckId)) S.view = "library";
-  render(); queueLookups(); askToKeepData();
+  if (!CLOUD.user && S.view === "deck" && !S.decks.has(S.deckId)) S.view = "library";
+  render(); queueLookups(); if (!CLOUD.user) askToKeepData();
+}
+
+// ---------- accounts and sync (Firebase) ----------
+// Turned on by js/firebase-config.js. Signed out, the site works from browser storage as before.
+// Signed in, each deck is one document at users/{uid}/decks/{deckId} and the card bin is users/{uid}/meta/bin.
+const FB = "https://www.gstatic.com/firebasejs/12.19.0/";
+const CLOUD = { enabled: false, api: null, user: null, authReady: false, loaded: false, failed: false, unsubs: [], pending: 0, serverDecks: false, serverBin: false, migrated: false, menu: false };
+const synced = new Map(); // deck id -> rev last written to or read from the account
+let syncedBinRev = 0;
+function cloudInit() {
+  const cfg = window.LEDGER_FIREBASE;
+  CLOUD.enabled = !!(cfg && cfg.apiKey && cfg.projectId);
+  if (!CLOUD.enabled) return Promise.resolve();
+  return new Promise(resolve => {
+    let settled = false; const done = () => { if (!settled) { settled = true; resolve(); } };
+    setTimeout(done, 4000); // don't hold the page if Firebase is slow to answer
+    Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-auth.js"), import(FB + "firebase-firestore.js")]).then(([appM, authM, fsM]) => {
+      const app = appM.initializeApp(cfg);
+      const auth = authM.getAuth(app);
+      let db;
+      try { db = fsM.initializeFirestore(app, { localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); }
+      catch { db = fsM.getFirestore(app); }
+      CLOUD.api = { authM, fsM, auth, db };
+      authM.onAuthStateChanged(auth, user => { onUser(user); done(); });
+    }).catch(() => { CLOUD.failed = true; done(); safeRender(); });
+  });
+}
+function stopCloud() { CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = []; synced.clear(); syncedBinRev = 0; CLOUD.loaded = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = false; }
+function onUser(user) {
+  CLOUD.authReady = true;
+  if (!user) {
+    const was = CLOUD.user; CLOUD.user = null; stopCloud();
+    if (was) { loadStore(); S.view = "library"; S.deckId = null; }
+    if (S.ready) render();
+    return;
+  }
+  if (CLOUD.user && CLOUD.user.uid === user.uid) return;
+  if (persistTimer) { clearTimeout(persistTimer); persistNow(); } // finish saving to this browser first
+  stopCloud();
+  CLOUD.user = { uid: user.uid, name: user.displayName || "", email: user.email || "" };
+  S.decks = new Map(); S.loose = { cards: [] };
+  const { fsM, db } = CLOUD.api; const uid = user.uid;
+  CLOUD.binRef = fsM.doc(db, "users", uid, "meta", "bin");
+  CLOUD.unsubs.push(fsM.onSnapshot(fsM.collection(db, "users", uid, "decks"), { includeMetadataChanges: true }, snap => {
+    for (const ch of snap.docChanges()) {
+      const id = ch.doc.id;
+      if (ch.type === "removed") { if (!ch.doc.metadata.hasPendingWrites) { S.decks.delete(id); synced.delete(id); } continue; }
+      if (ch.doc.metadata.hasPendingWrites) continue; // our own change on its way to the server
+      const data = ch.doc.data(); if (!data || !Array.isArray(data.cur)) continue;
+      const local = S.decks.get(id);
+      if (local && (local.rev || 0) > (data.rev || 0)) continue;
+      const d = normalizeDeck(Object.assign({}, data, { id }));
+      syncDeckIds(d); S.decks.set(id, d); synced.set(id, d.rev || 0);
+    }
+    CLOUD.loaded = true;
+    if (!snap.metadata.fromCache) CLOUD.serverDecks = true;
+    maybeMigrate(); safeRender();
+  }, cloudError));
+  CLOUD.unsubs.push(fsM.onSnapshot(CLOUD.binRef, { includeMetadataChanges: true }, snap => {
+    if (!snap.metadata.hasPendingWrites) {
+      const data = snap.exists() ? snap.data() : null;
+      if (data && Array.isArray(data.cards) && (data.rev || 0) >= (S.loose.rev || 0)) { S.loose = data; syncBinIds(); syncedBinRev = data.rev || 0; }
+    }
+    if (!snap.metadata.fromCache) CLOUD.serverBin = true;
+    maybeMigrate(); safeRender();
+  }, cloudError));
+  if (S.ready) render();
+}
+function cloudError(err) {
+  const code = err && err.code || "";
+  toast(code === "permission-denied" ? "Your account's data couldn't be read. Firebase's security rules may not be set up yet." : "Lost the connection to your account. Changes are kept and will sync when it's back.");
+}
+// The first time someone signs in on a browser, decks saved there move into their account.
+function maybeMigrate() {
+  if (CLOUD.migrated || !CLOUD.serverDecks || !CLOUD.serverBin) return;
+  CLOUD.migrated = true;
+  const local = readLocalStore();
+  const decks = local && Array.isArray(local.decks) ? local.decks.filter(d => d && d.id && Array.isArray(d.cur)) : [];
+  const binCards = local && local.bin && Array.isArray(local.bin.cards) ? local.bin.cards : [];
+  if (!decks.length && !binCards.length) return;
+  let moved = 0;
+  for (const raw of decks) {
+    const here = S.decks.get(raw.id);
+    if (here && (here.rev || 0) >= (raw.rev || 0)) continue;
+    const d = normalizeDeck(clone(raw)); syncDeckIds(d); if (!d.rev) touch(d);
+    S.decks.set(d.id, d); synced.delete(d.id); moved++;
+  }
+  for (const c of binCards) {
+    const ex = S.loose.cards.find(x => x.n === c.n && (x.from || "") === (c.from || ""));
+    if (ex) ex.q = Math.max(ex.q, c.q); else S.loose.cards.push(clone(c));
+  }
+  if (binCards.length) { S.loose.rev = Math.max(Date.now(), (S.loose.rev || 0) + 1); syncBinIds(); }
+  cloudFlush();
+  try { localStorage.setItem(STORE_KEY + "-moved", JSON.stringify({ movedAt: Date.now(), uid: CLOUD.user.uid, data: local })); localStorage.removeItem(STORE_KEY); } catch {}
+  toast(moved ? `Moved ${moved} deck${moved === 1 ? "" : "s"} from this browser into your account.` : "Your account is up to date with this browser.");
+}
+function forCloud(o) { return JSON.parse(JSON.stringify(o)); } // drops undefined values, which Firestore rejects
+function cloudWrite(promise) {
+  CLOUD.pending++; updateSyncChip();
+  promise.catch(err => cloudError(err)).finally(() => { CLOUD.pending = Math.max(0, CLOUD.pending - 1); updateSyncChip(); });
+}
+function cloudFlush() {
+  if (!CLOUD.user || !CLOUD.api) return;
+  const { fsM, db } = CLOUD.api; const uid = CLOUD.user.uid;
+  for (const d of S.decks.values()) {
+    if (synced.has(d.id) && synced.get(d.id) === (d.rev || 0)) continue;
+    synced.set(d.id, d.rev || 0);
+    cloudWrite(fsM.setDoc(fsM.doc(db, "users", uid, "decks", d.id), forCloud(d)));
+  }
+  for (const id of [...synced.keys()]) if (!S.decks.has(id)) { synced.delete(id); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id))); }
+  if ((S.loose.rev || 0) !== syncedBinRev) { syncedBinRev = S.loose.rev || 0; cloudWrite(fsM.setDoc(CLOUD.binRef, forCloud(S.loose))); }
+}
+function syncText() {
+  if (!CLOUD.pending) return "Synced";
+  return navigator.onLine === false ? `Offline · ${CLOUD.pending} waiting` : "Saving…";
+}
+function updateSyncChip() { const el = $("#sync-status"); if (el) { el.textContent = syncText(); el.classList.toggle("busy", CLOUD.pending > 0); } }
+window.addEventListener("online", updateSyncChip); window.addEventListener("offline", updateSyncChip);
+async function signIn() {
+  if (!CLOUD.api) return toast("Sign-in isn't available right now. Check your connection and reload.");
+  const { authM, auth } = CLOUD.api; const provider = new authM.GoogleAuthProvider();
+  try { await authM.signInWithPopup(auth, provider); }
+  catch (e) {
+    const code = e && e.code || "";
+    if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") { try { await authM.signInWithRedirect(auth, provider); } catch {} return; }
+    if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+    toast(code === "auth/unauthorized-domain" ? "This website isn't on Firebase's list of authorized domains yet." : code === "auth/network-request-failed" ? "Couldn't reach Google. Check your connection and try again." : "Couldn't sign in. Try again.");
+  }
+}
+async function signOutNow() {
+  if (!CLOUD.api) return;
+  if (persistTimer) { clearTimeout(persistTimer); persistNow(); }
+  if (CLOUD.pending && navigator.onLine === false) return toast("You have changes waiting to sync. Reconnect before signing out so they aren't lost.");
+  try { await CLOUD.api.authM.signOut(CLOUD.api.auth); toast("Signed out."); } catch { toast("Couldn't sign out. Try again."); }
+}
+function accountHtml() {
+  if (!CLOUD.enabled) return "";
+  if (CLOUD.failed) return `<span class="sync-chip warn" title="Firebase didn't load">Sync unavailable</span>`;
+  if (!CLOUD.authReady) return "";
+  if (!CLOUD.user) return `<button class="btn" data-act="signin">${ICONS.user}Sign in</button>`;
+  const initials = (CLOUD.user.name || CLOUD.user.email || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  return `<span id="sync-status" class="sync-chip${CLOUD.pending ? " busy" : ""}" role="status">${syncText()}</span><div class="menuwrap"><button class="btn acct" data-act="acct-menu" aria-haspopup="menu" aria-expanded="${CLOUD.menu}" title="${esc(CLOUD.user.email)}"><span class="avatar">${esc(initials)}</span><span class="acct-name">${esc(CLOUD.user.name || CLOUD.user.email)}</span></button>${CLOUD.menu ? `<div class="menu acct-menu" role="menu"><span class="menu-note">${esc(CLOUD.user.email)}</span><button role="menuitem" data-act="signout">Sign out</button></div>` : ""}</div>`;
 }
 
 // ---------- Scryfall: card images and lookups for cards missing from the built-in list ----------
@@ -541,16 +696,18 @@ function fromHash() { if (location.hash === "#all-cards") { S.view = "all"; retu
 function render() {
   const app = $("#app");
   let html = `<div class="top"><div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>`;
-  html += `<div class="topacts"><button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
+  html += `<div class="topacts">${accountHtml()}<button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
-  if (S.ready && !S.live) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;
+  if (CLOUD.enabled && CLOUD.authReady && !CLOUD.user && !CLOUD.failed && S.view === "library") html += `<div class="signin-note"><div><b>Sync your decks</b> Sign in with Google to keep your decks in step between your phone and computer.${S.decks.size || (S.loose.cards || []).length ? " The decks saved in this browser move into your account the first time you sign in." : ""}</div><button class="btn primary" data-act="signin">${ICONS.user}Sign in with Google</button></div>`;
+  if (S.ready && !S.live && !CLOUD.user) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;
   const d = S.deckId && S.decks.get(S.deckId);
-  if (S.view === "all") html += renderAll();
+  if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
+  else if (S.view === "all") html += renderAll();
   else if (S.view === "deck" && d) html += renderDeck(d);
   else if (S.view === "deck" && S.ready) { S.view = "library"; html += renderLibrary(); }
   else html += renderLibrary();
-  html += `<footer class="site-foot"><p>Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device.</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
+  html += `<footer class="site-foot"><p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
   if (S.dialog) renderDialog();
 }
@@ -676,10 +833,11 @@ function printingsHtml(d, art) {
 function artNameOf(d) { if (d.artOff) return null; if (d.artCard && curMap(d).has(d.artCard)) return d.artCard; return (d.commanders || [])[0] || null; }
 function backupBtns(onlyImport) {
   const st = backupStatus();
-  const chip = onlyImport ? "" : `<span class="backup-chip${st.stale ? " warn" : ""}" title="Backups are files you download. Keep one somewhere safe.">Last backup: ${st.last ? agoText(st.days) : "never"}</span>`;
+  const chip = onlyImport ? "" : CLOUD.user ? `<span class="backup-chip" title="Your decks are stored in your account.">Saved to your account</span>` : `<span class="backup-chip${st.stale ? " warn" : ""}" title="Backups are files you download. Keep one somewhere safe.">Last backup: ${st.last ? agoText(st.days) : "never"}</span>`;
   return `${chip}${onlyImport ? "" : `<button class="btn sm" data-act="export">${ICONS.down}Export backup</button>`}<label class="btn sm" for="imp-file">${ICONS.up}Import backup</label><input type="file" id="imp-file" accept=".json,application/json" hidden>`;
 }
 function backupWarning() {
+  if (CLOUD.user) return "";
   const st = backupStatus(); if (!st.stale || st.snoozed) return "";
   return `<div class="backup-warn" role="status"><span><b>Back up your decks.</b> ${st.last ? `Your last backup was ${agoText(st.days)}, and you've made changes since.` : "You haven't made a backup yet."} Your decks are saved only in this browser, so clearing its data or switching devices would lose them.</span><span class="grow"></span><button class="btn sm primary" data-act="export">${ICONS.down}Export backup</button><button class="btn sm ghost" data-act="backup-snooze">Remind me later</button></div>`;
 }
@@ -1188,6 +1346,7 @@ function updateDiff() {
 
 // ---------- events ----------
 document.addEventListener("click", e => {
+  if (CLOUD.menu && !e.target.closest(".menuwrap [data-act='acct-menu']") && !e.target.closest(".menu")) { CLOUD.menu = false; render(); }
   if (e.target.closest("a")) return;
   const el0 = e.target.closest("[data-editlink]"); if (el0) { e.stopPropagation(); return openDialog({ kind: "edit", id: el0.dataset.editlink }); }
   if (S.menu && !e.target.closest(".menuwrap [data-act='copy-menu']")) { S.menu = false; if (!e.target.closest(".menu")) render(); }
@@ -1226,6 +1385,9 @@ document.addEventListener("click", e => {
   if (act === "reg-close") { S.reg = null; return render(); }
   if (act === "reg-go") { if (S.reg !== "running") startRefresh(); return; }
   if (act === "export") return exportBackup();
+  if (act === "signin") return signIn();
+  if (act === "acct-menu") { CLOUD.menu = !CLOUD.menu; return render(); }
+  if (act === "signout") { CLOUD.menu = false; return signOutNow(); }
   if (act === "toggle-checks") { S.showChecks = !S.showChecks; return render(); }
   if (act === "backup-snooze") { lsSetNum(SNOOZE_KEY, Date.now() + 3 * DAY); return render(); }
   if (act === "example") {

@@ -11,12 +11,18 @@ Track Commander decks: every swap, every cut, every card you've printed, and a b
 | `index.html` | The page shell |
 | `css/style.css` | All styling |
 | `js/app.js` | All of the app's code |
+| `js/firebase-config.js` | Firebase settings for accounts and sync |
+| `firestore.rules` | Database security rules to paste into Firebase |
 | `data/cards.json` | The card list, built from Scryfall: name, mana cost, type, color identity, Commander legality, Game Changer status, partner rules and Scryfall's permanent card ID |
 | `scripts/build-cards.mjs` | Builds `data/cards.json` from Scryfall's bulk data |
 | `data/example-deck.json` | The "Try an example deck" deck |
 | `tests/` | Automatic tests |
 
-Each visitor's decks are saved in their own browser. Nothing is sent to a server.
+Signed out, each visitor's decks are saved in their own browser. Signed in with Google, they're saved to that person's account and sync between devices.
+
+## Accounts (Firebase)
+
+Sign-in and sync use Firebase (Google sign-in plus a Firestore database). The settings live in `js/firebase-config.js`; set `window.LEDGER_FIREBASE = null` there to turn accounts off. Those values are public by design. The data is protected by the rules in `firestore.rules`, which must be pasted into the Firebase console (Firestore Database → Rules). Each person's decks are stored at `users/{their id}/decks/{deck id}` and their card bin at `users/{their id}/meta/bin`. The first time someone signs in, the decks saved in that browser move into their account.
 
 ## Card list updates
 

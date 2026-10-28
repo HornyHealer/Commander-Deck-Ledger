@@ -389,3 +389,18 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .checks small { display: block; color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .02em; margin-top: 3px; overflow-wrap: anywhere; }
 .rule-issues { color: var(--bad); }
 @media (max-width: 520px) { .checks li { grid-template-columns: 1fr; gap: 4px; } }
+
+/* accounts and sync */
+.sync-chip { align-self: center; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--good); padding: 0 4px; }
+.sync-chip::before { content: "■ "; font-size: 8px; vertical-align: 1px; }
+.sync-chip.busy { color: var(--warn); }
+.sync-chip.warn { color: var(--bad); }
+.btn.acct { padding: 5px 10px 5px 5px; }
+.avatar { display: inline-grid; place-items: center; width: 22px; height: 22px; background: var(--acid); color: var(--acid-ink); font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.acct-name { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; text-transform: none; letter-spacing: .02em; font-family: var(--body); font-size: 12px; }
+.menu-note { padding: 7px 10px 4px; font-family: var(--mono); font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.signin-note { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--surface); outline: 1px solid var(--rule); outline-offset: -1px; border-left: 6px solid var(--acid); padding: 12px 16px; margin: -8px 0 20px; font-size: 13px; }
+.signin-note > div { flex: 1 1 320px; min-width: 0; }
+.signin-note b { display: block; font-family: var(--wide); font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3px; }
+@media (max-width: 520px) { .acct-name { display: none; } .btn.acct { padding: 5px; } }
+.menu.acct-menu { left: 0; right: auto; min-width: 220px; max-width: calc(100vw - 32px); }
