@@ -533,11 +533,17 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .cardpv .pv-link { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); white-space: nowrap; padding: 8px 12px; background: var(--ink); color: var(--acid); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: none; }
 .cardpv:not(.tap) .pv-link { display: none; }
 .entry .kind .deckref { font: inherit; letter-spacing: inherit; text-transform: inherit; }
-.swap .i .grab { margin-left: 8px; vertical-align: 1px; display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--rule); background: var(--acid); color: var(--acid-ink); padding: 2px 7px; font: 500 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
-.swap .i .grab .icon { width: 11px; height: 11px; }
-.swap .i .grab:hover { background: var(--ink); color: var(--acid); }
-.swap .i .grab:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
 .swaps.adds .swap { grid-template-columns: minmax(0, 1fr); }
-.swap .i .grabbox { display: inline-flex; margin-left: 8px; vertical-align: 1px; font-weight: 400; }
-.swap .i .grabbox .grab-src { padding: 1px 4px; font: 11px var(--body); max-width: 170px; border-right: 0; }
-.swap .i .grabbox .grab { margin-left: 0; }
+
+/* Incoming box: the source picker and Grab button sit in their own column, the same size on every row */
+.swaps.grabs { display: grid; grid-template-columns: minmax(0, 1fr) 20px max-content auto; column-gap: 8px; row-gap: 4px; align-items: center; justify-content: start; }
+.swaps.grabs.adds { grid-template-columns: fit-content(62%) auto; column-gap: 12px; }
+.swaps.grabs .i { overflow-wrap: anywhere; }
+.swaps.grabs .swap { display: contents; }
+.gx { min-height: 24px; display: flex; align-items: center; }
+.grabbox { display: inline-flex; align-items: stretch; height: 24px; }
+.grabbox .grab-src { width: 92px; height: 24px; padding: 0 4px; font: 11px var(--body); border-right: 0; text-overflow: ellipsis; }
+.grabbox .grab { display: inline-flex; gap: 4px; align-items: center; height: 24px; box-sizing: border-box; border: 1px solid var(--rule); background: var(--acid); color: var(--acid-ink); padding: 0 8px; font: 500 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.grabbox .grab .icon { width: 11px; height: 11px; }
+.grabbox .grab:hover { background: var(--ink); color: var(--acid); }
+.grabbox .grab:focus-visible, .grabbox .grab-src:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }

@@ -1455,12 +1455,13 @@ function renderPrinted(d) {
 function swapLines(e, inExtra) {
   const o = e.out || [], i = e.in || [];
   const fmt = x => esc(x.n) + (x.q > 1 ? ` ×${x.q}` : "");
-  const fin = x => fmt(x) + (inExtra ? inExtra(x) : "");
-  if (!o.length && i.length) return `<div class="swaps adds">${i.map(x => `<div class="swap"><span class="i">${fin(x)}</span></div>`).join("")}</div>`;
-  if (o.length === i.length && o.length) return `<div class="swaps">${o.map((x, k) => `<div class="swap"><span class="o">${fmt(x)}</span><span class="arr">→</span><span class="i">${fin(i[k])}</span></div>`).join("")}</div>`;
+  // With extras (the incoming box's Grab controls), each row's extra sits in its own column so they line up.
+  const gx = x => inExtra ? `<span class="gx">${x ? inExtra(x) : ""}</span>` : "";
+  const cls = "swaps" + (inExtra ? " grabs" : "");
+  if (!o.length && i.length) return `<div class="${cls} adds">${i.map(x => `<div class="swap"><span class="i">${fmt(x)}</span>${gx(x)}</div>`).join("")}</div>`;
   const n = Math.max(o.length, i.length); let s = "";
-  for (let k = 0; k < n; k++) s += `<div class="swap"><span class="o">${o[k] ? fmt(o[k]) : ""}</span><span class="arr">${o[k] && i[k] ? "→" : ""}</span><span class="i">${i[k] ? fin(i[k]) : ""}</span></div>`;
-  return `<div class="swaps">${s}</div>`;
+  for (let k = 0; k < n; k++) s += `<div class="swap"><span class="o">${o[k] ? fmt(o[k]) : ""}</span><span class="arr">${o[k] && i[k] ? "→" : ""}</span><span class="i">${i[k] ? fmt(i[k]) : ""}</span>${gx(i[k])}</div>`;
+  return `<div class="${cls}">${s}</div>`;
 }
 function renderHistory(d) {
   const entries = [...d.log].reverse();
