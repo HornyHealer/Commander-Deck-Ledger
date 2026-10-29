@@ -585,3 +585,7 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .fetch-msg.bad { color: var(--bad); }
 .rules-empty { margin: 0; padding: 10px 12px; font-size: 13px; }
 .check-input > .f { display: grid; gap: 6px; }
+.u-paste summary { cursor: pointer; font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: underline; text-underline-offset: 3px; }
+.u-paste[open] summary { margin-bottom: 8px; }
+.u-paste textarea.field { min-height: 160px; }
+.u-note { margin: 8px 0 0; font-size: 12px; }

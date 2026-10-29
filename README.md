@@ -49,6 +49,10 @@ The Worker deploys automatically when anything in `worker/` changes, using the `
 
 In **New deck**, a "Your collection" section sorts the list's cards into In the card bin, In other decks and Not owned, each with buttons for where the cards come from (the same as creating a deck from Check a list). Not owned starts as Add to Collection for someone's first deck and New Incoming after that.
 
+## Update from Archidekt
+
+On a deck page, **Update from Archidekt** compares the deck with its Archidekt list and puts only the differences on the swap bench (cuts in Taking out, additions in Putting in), where you decide what to keep before saving. If the deck has an Archidekt link saved it fetches straight away; otherwise it asks for one, and **Save link & put changes on the bench** stores the link with the deck. Cards already incoming aren't added twice. A pasted list still works under **Or paste a list instead**.
+
 ## Check a list
 
 **Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "Your collection" section has one row of buttons per group, and every group starts on **New Incoming**:

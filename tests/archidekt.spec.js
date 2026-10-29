@@ -89,3 +89,57 @@ test("someone's first deck starts with not-owned cards as Owned", async ({ page 
   await expect(page.locator('.inc')).toHaveCount(0);
   await expect(page.locator('.summary')).toContainText('100');
 });
+
+const RAT_PACK_NOW = { id: '1', name: 'Rat Pack', count: 9, commanders: ["Captain N'ghathrod"], text: "1x Captain N'ghathrod [Commander]\n1x Brainstorm\n6x Island\n1x Typhoid Rats" };
+
+test('Update from Archidekt fetches the saved link and puts only the differences on the bench @phone', async ({ page, context }) => {
+  await context.route(PROXY, r => {
+    const deck = new URL(r.request().url()).searchParams.get('deck'); asked.push(deck);
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify(deck === '1' ? RAT_PACK_NOW : DECK) });
+  });
+  await importBackup(page);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-act="update"]');
+  await expect(page.locator('#dlg-t')).toHaveText('Update from Archidekt');
+  // The deck already has its link saved, so it fetches right away.
+  await expect(page.locator('#u-fetch-msg')).toContainText('Fetched 9 cards');
+  expect(asked).toEqual(['1']);
+  const diff = page.locator('#u-diff');
+  await expect(diff).toContainText('Sol Ring');
+  await expect(diff).toContainText('Brainstorm');
+  // Typhoid Rats is already incoming, so it isn't added again.
+  await expect(diff).not.toContainText('Typhoid Rats');
+  await expect(page.locator('#u-go-save')).toHaveCount(0);
+  await page.click('#u-go');
+  const bench = page.locator('.bench');
+  await expect(bench.locator('.dropbox[data-drop="out"]')).toContainText('Sol Ring');
+  await expect(bench.locator('.dropbox[data-drop="in"]')).toContainText('Brainstorm');
+  await expect(bench.locator('.dropbox[data-drop="in"]')).toContainText('Island');
+});
+
+test('Update from Archidekt asks for a link when none is saved, and can save it to the deck', async ({ page }) => {
+  await importBackup(page);
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-act="update"]');
+  await expect(page.locator('#u-link')).toHaveValue('');
+  expect(asked).toEqual([]);
+  await page.fill('#u-link', '26238673');
+  await page.press('#u-link', 'Enter');
+  await expect(page.locator('#u-fetch-msg')).toContainText('Fetched 4 cards');
+  await expect(page.locator('#u-go')).toBeEnabled();
+  await page.click('#u-go-save');
+  await expect(page.locator('.dhead .dn a')).toHaveAttribute('href', 'https://archidekt.com/decks/26238673');
+  await expect(page.locator('.bench .dropbox[data-drop="in"]')).toContainText('Krenko, Mob Boss');
+});
+
+test('Update from Archidekt still takes a pasted list', async ({ page }) => {
+  await importBackup(page);
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  await page.click('[data-act="update"]');
+  await page.click('.u-paste summary');
+  await page.fill('#u-list', '1 Zagras, Thief of Heartbeats [Commander]\n1 Sol Ring');
+  await expect(page.locator('#u-diff')).toContainText('Coming out');
+  await expect(page.locator('#u-go-save')).toHaveCount(0);
+  await page.click('#u-go');
+  await expect(page.locator('.bench .dropbox[data-drop="out"] .brow').first()).toBeVisible();
+});

@@ -335,9 +335,10 @@ async function fetchArchidekt(link) {
 const archMsg = err => ARCH_MSG[err && err.message] || "Archidekt didn't answer properly. Try again in a minute, or paste the list instead.";
 // Fetch button: fills the deck list box ("n" = New deck popup, "chk" = Check a list).
 async function archFetch(where, btn) {
-  const linkEl = $(where === "n" ? "#n-link" : "#chk-link");
+  const ids = { n: ["#n-link", "#n-fetch-msg"], chk: ["#chk-link", "#chk-fetch-msg"], u: ["#u-link", "#u-fetch-msg"] }[where];
+  const linkEl = $(ids[0]);
   const link = linkEl ? linkEl.value : "";
-  const say = (t, bad) => { const msg = $(where === "n" ? "#n-fetch-msg" : "#chk-fetch-msg"); if (msg) { msg.textContent = t; msg.className = "fetch-msg" + (bad ? " bad" : ""); msg.hidden = !t; } };
+  const say = (t, bad) => { const msg = $(ids[1]); if (msg) { msg.textContent = t; msg.className = "fetch-msg" + (bad ? " bad" : ""); msg.hidden = !t; } };
   if (btn) { btn.disabled = true; btn.dataset.label = btn.dataset.label || btn.innerHTML; btn.innerHTML = "Fetching…"; }
   say("");
   try {
@@ -347,6 +348,9 @@ async function archFetch(where, btn) {
       const nm = $("#n-name"); if (nm && !nm.value.trim() && deck.name) dl.name = deck.name; else if (nm) dl.name = nm.value;
       const ds = $("#n-desc"); if (ds) dl.desc = ds.value;
       renderDialog();
+    } else if (where === "u" && S.dialog && S.dialog.kind === "update") {
+      const dl = S.dialog; const full = /^https?:\/\//i.test(link.trim()) ? link.trim() : "https://archidekt.com/decks/" + deck.id; dl.text = deck.text; dl.link = full; dl.fetchedLink = full; dl.fetchedName = deck.name; dl.paste = false;
+      renderDialog();
     } else if (where === "chk") {
       CHECK_TEXT = deck.text; CHECK_LINK = link.trim();
       try { localStorage.setItem("cdl-check-text", CHECK_TEXT); localStorage.setItem("cdl-check-link", CHECK_LINK); } catch {}
@@ -354,7 +358,7 @@ async function archFetch(where, btn) {
     }
     say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
   } catch (err) { say(archMsg(err), true); }
-  finally { const b = $(where === "n" ? '[data-arch="n"]' : '[data-arch="chk"]'); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
+  finally { const b = $(`[data-arch="${where}"]`); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
 }
 
 // ---------- collection check: which cards of a pasted list you already own ----------
@@ -1402,7 +1406,7 @@ function renderDeck(d) {
     <div class="dn">${esc(d.name)} · started ${fmtDate(d.createdAt)}${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : ""}</div>
     ${d.desc ? `<p class="ddesc">${esc(d.desc)}</p>` : ""}
   </div><div class="actions">
-    <button class="btn" data-act="update">${ICONS.list}Update from list</button>
+    <button class="btn" data-act="update">${ICONS.down}Update from Archidekt</button>
     <button class="btn" data-act="edit">Edit details</button>
   </div></div>
   <div class="summary">
@@ -1693,9 +1697,12 @@ function renderDialog() {
     </div>
     <footer><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="save-edit">Save</button></footer></div>`;
   } else if (dl.kind === "update") {
-    h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Update from list</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Paste the deck's newest list (from Archidekt or anywhere). The differences go onto the swap bench for you to review and save.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
-    <div class="db"><textarea class="field" id="u-list" placeholder="Paste the full current list">${esc(dl.text || "")}</textarea><div id="u-diff"></div></div>
-    <footer><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="to-bench" id="u-go" disabled>Put changes on the bench</button></footer></div>`;
+    const d = S.decks.get(dl.id); const saveLink = dl.fetchedLink && dl.fetchedLink !== (d.link || "");
+    h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Update from Archidekt</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Compares this deck with its Archidekt list. The differences go onto the swap bench, where you decide what to keep before saving.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
+    <div class="db"><div class="f"><label class="label" for="u-link">${d.link ? "Archidekt link saved with this deck" : "Archidekt link for this deck"}</label><div class="linkrow"><input class="field" id="u-link" placeholder="https://archidekt.com/decks/…" value="${esc(dl.link ?? d.link ?? "")}" autocomplete="off"><button class="btn sm" data-arch="u" data-act="arch-fetch">${ICONS.down}Fetch</button></div><p class="fetch-msg" id="u-fetch-msg" hidden></p></div>
+      <details class="u-paste"${dl.paste ? " open" : ""}><summary>Or paste a list instead</summary><textarea class="field" id="u-list" placeholder="Paste the full current list">${esc(dl.text || "")}</textarea></details>
+      <div id="u-diff"></div></div>
+    <footer><button class="btn ghost" data-dlg="close">Cancel</button>${saveLink ? `<button class="btn" data-dlg="to-bench-save" id="u-go-save" disabled>Save link &amp; put changes on the bench</button>` : ""}<button class="btn primary" data-dlg="to-bench" id="u-go" disabled>Put changes on the bench</button></footer></div>`;
   } else if (dl.kind === "binadd") {
     h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Add to card bin</h2><p class="muted" style="margin:6px 0 0;font-size:13px">For cards you already own that aren't in a deck. Search for a card, or paste a list with one card per line like <span class="mono">2x Sol Ring</span>.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">
@@ -1721,7 +1728,7 @@ function renderDialog() {
   const keepScroll = s.dataset.kind === dl.kind ? s.scrollTop : 0; s.dataset.kind = dl.kind;
   s.innerHTML = h; s.scrollTop = keepScroll;
   if (dl.kind === "new") { updateNewParse(); setTimeout(() => $("#n-name") && !dl.text && $("#n-name").focus(), 0); }
-  if (dl.kind === "update") { updateDiff(); setTimeout(() => $("#u-list") && $("#u-list").focus(), 0); }
+  if (dl.kind === "update") { updateDiff(); if (!dl.fetchedLink && !$("#u-link").value) setTimeout(() => $("#u-link") && $("#u-link").focus(), 0); }
   if (dl.kind === "binadd") { updateBinAdd(); setTimeout(() => $("#ba-search") && $("#ba-search").focus(), 0); }
   if (dl.kind === "copy") setTimeout(() => { const t = $("#c-text"); if (t) { t.focus(); t.select(); } }, 0);
 }
@@ -1845,20 +1852,24 @@ function updateNewParse() {
   <div class="f" style="margin-top:10px"><span class="label">Commander</span><div class="cmdpick" style="margin-top:5px">${opts.length ? opts.map(n => `<label><input type="checkbox" name="n-cmd" value="${esc(n)}" ${dl.cmds.includes(n) ? "checked" : ""}>${esc(n)}</label>`).join("") : '<span class="muted" style="font-size:13px">No legendary creatures found. You can set it later.</span>'}</div></div>`;
   renderRules();
 }
+// Compares a list with the deck as it will be once its incoming changes arrive, so cards already on their way
+// aren't added twice. Cuts only come from cards actually in the deck list.
 function diffLists(d, p) {
-  const cm = curMap(d); const nm = new Map(p.cards.map(c => [c.n, c.q])); const out = [], ins = [];
-  for (const [n, q] of cm) { const v = nm.get(n) || 0; if (v < q) out.push({ n, q: q - v }); }
-  for (const [n, q] of nm) { const v = cm.get(n) || 0; if (q > v) ins.push({ n, q: q - v }); }
-  return { out, ins };
+  const cm = curMap(d); const will = new Map(cm);
+  for (const b of incomingOf(d)) { for (const o of b.out) { const v = (will.get(o.n) || 0) - o.q; if (v > 0) will.set(o.n, v); else will.delete(o.n); } for (const i of b.in) will.set(i.n, (will.get(i.n) || 0) + i.q); }
+  const nm = new Map(p.cards.map(c => [c.n, c.q])); const out = [], ins = [], dropInc = [];
+  for (const [n, q] of will) { const v = nm.get(n) || 0; if (v < q) { const cut = Math.min(q - v, cm.get(n) || 0); if (cut) out.push({ n, q: cut }); if (q - v > cut) dropInc.push({ n, q: q - v - cut }); } }
+  for (const [n, q] of nm) { const v = will.get(n) || 0; if (q > v) ins.push({ n, q: q - v }); }
+  return { out, ins, dropInc };
 }
 function updateDiff() {
   const el = $("#u-diff"); const ta = $("#u-list"); if (!el || !ta) return;
   const d = S.decks.get(S.dialog.id); const p = parseList(ta.value); const go = $("#u-go");
-  if (!p.cards.length) { el.innerHTML = ""; if (go) go.disabled = true; return; }
-  const { out, ins } = diffLists(d, p); S.dialog.diff = { out, ins };
-  if (go) go.disabled = !(out.length || ins.length);
+  if (!p.cards.length) { el.innerHTML = ""; if (go) go.disabled = true; const gs = $("#u-go-save"); if (gs) gs.disabled = true; return; }
+  const { out, ins, dropInc } = diffLists(d, p); S.dialog.diff = { out, ins };
+  if (go) go.disabled = !(out.length || ins.length); const gs = $("#u-go-save"); if (gs) gs.disabled = !(out.length || ins.length);
   const li = (a, cls) => a.length ? a.map(x => `<li class="${cls}">${x.q > 1 ? x.q + " " : ""}${esc(x.n)}</li>`).join("") : '<li class="muted">None</li>';
-  el.innerHTML = (out.length || ins.length) ? `<div class="diffcols"><div><span class="label" style="color:var(--bad)">Coming out · ${out.reduce((a, x) => a + x.q, 0)}</span><ul>${li(out, "")}</ul></div><div><span class="label" style="color:var(--good)">Going in · ${ins.reduce((a, x) => a + x.q, 0)}</span><ul>${li(ins, "")}</ul></div></div>${p.unknown.length ? `<p class="unk">${p.unknown.length} names not recognized: ${p.unknown.slice(0, 6).map(esc).join(", ")}</p>` : ""}` : `<p class="muted">This list matches the current deck exactly.</p>`;
+  el.innerHTML = (out.length || ins.length) ? `<div class="diffcols"><div><span class="label" style="color:var(--bad)">Coming out · ${out.reduce((a, x) => a + x.q, 0)}</span><ul>${li(out, "")}</ul></div><div><span class="label" style="color:var(--good)">Going in · ${ins.reduce((a, x) => a + x.q, 0)}</span><ul>${li(ins, "")}</ul></div></div>${p.unknown.length ? `<p class="unk">${p.unknown.length} names not recognized: ${p.unknown.slice(0, 6).map(esc).join(", ")}</p>` : ""}${dropInc.length ? `<p class="muted u-note">Still incoming but no longer on the list: ${dropInc.map(x => esc(x.n)).join(", ")}. Cancel ${dropInc.length > 1 ? "them" : "it"} from the Incoming box if you don't need ${dropInc.length > 1 ? "them" : "it"}.</p>` : ""}` : `<p class="muted">This list matches the deck${incomingOf(d).length ? " (counting its incoming cards)" : ""} exactly.</p>`;
 }
 
 // ---------- events ----------
@@ -1959,7 +1970,7 @@ document.addEventListener("click", e => {
   if (act === "arch-fetch") return archFetch(t.dataset.arch, t);
   if (act === "home") return go("library");
   if (act === "edit" && d) return openDialog({ kind: "edit", id: d.id });
-  if (act === "update" && d) return openDialog({ kind: "update", id: d.id });
+  if (act === "update" && d) { openDialog({ kind: "update", id: d.id }); if (d.link && archId(d.link)) archFetch("u", $('[data-arch="u"]')); return; }
   if (act === "copy-cur" && d) { if (S.menu === false && $(".menu")) render(); return copyText(listText(d, d.cur, true), "Current list"); }
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Owned list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
@@ -2023,10 +2034,11 @@ document.addEventListener("click", e => {
     if (dd && dd.art && S.assets) S.assets.delete(dd.art).catch(() => {});
     closeDialog(); removeDeck(id); go("library"); return toast(kept ? `Deck deleted. ${kept} owned cards moved to the card bin.` : "Deck deleted.");
   }
-  if (dlg === "to-bench") {
+  if (dlg === "to-bench" || dlg === "to-bench-save") {
     const dd = S.decks.get(S.dialog.id); const df = S.dialog.diff; if (!df) return;
+    if (dlg === "to-bench-save" && /^https?:\/\//i.test(S.dialog.fetchedLink || "")) dd.link = S.dialog.fetchedLink;
     dd.bench = { out: df.out, in: df.ins, note: dd.bench.note || "", kind: "import" };
-    closeDialog(); S.tab = "current"; render(); save(dd); toast("Changes are on the swap bench. Review, then save."); return;
+    closeDialog(); S.tab = "current"; S.benchOpen = true; render(); save(dd); toast(dlg === "to-bench-save" ? "Link saved. Changes are on the swap bench; review, then save." : "Changes are on the swap bench. Review, then save."); return;
   }
 });
 document.addEventListener("change", e => {
@@ -2055,10 +2067,11 @@ document.addEventListener("input", e => {
   if (id === "chk-list") { CHECK_TEXT = e.target.value; try { localStorage.setItem("cdl-check-text", CHECK_TEXT); } catch {} return updateCheck(); }
   if (id === "ba-list" && S.dialog) { S.dialog.text = e.target.value; return updateBinAdd(); }
   if (id === "ba-search") return showBaSugg(e.target.value);
-  if (id === "u-list" && S.dialog) { S.dialog.text = e.target.value; return updateDiff(); }
+  if (id === "u-list" && S.dialog) { S.dialog.text = e.target.value; S.dialog.paste = true; return updateDiff(); }
+  if (id === "u-link" && S.dialog) { S.dialog.link = e.target.value; return; }
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Enter" && (e.target.id === "n-link" || e.target.id === "chk-link")) { e.preventDefault(); const b = $(e.target.id === "n-link" ? '[data-arch="n"]' : '[data-arch="chk"]'); if (b && !b.disabled) archFetch(e.target.id === "n-link" ? "n" : "chk", b); return; }
+  if (e.key === "Enter" && ["n-link", "chk-link", "u-link"].includes(e.target.id)) { e.preventDefault(); const w = e.target.id.split("-")[0]; const b = $(`[data-arch="${w}"]`); if (b && !b.disabled) archFetch(w, b); return; }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".deckbox[data-open]")) { e.preventDefault(); return go("deck", e.target.dataset.open); }
   if (e.target.id === "ba-search") {
     const box = $("#g-ba"); if (!box || box.hidden) return; const btns = [...box.querySelectorAll("button")];
