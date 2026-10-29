@@ -1783,9 +1783,9 @@ function baPick(i) {
 // bin: owned (taken out of the bin) or incoming; decks: swap (moved from that deck), owned or incoming;
 // need: incoming or owned.
 const RULE_OPTS = {
-  bin: { title: "In the card bin", opts: [["incoming", "Incoming", "Wait for another copy; the bin keeps its copy"], ["owned", "Owned", "Taken out of the bin and into this deck"]] },
-  decks: { title: "In other decks", opts: [["swap", "Swap decks", "Moved out of the other deck; undo from either deck"], ["incoming", "Incoming", "Wait for another copy; the other deck keeps its copy"], ["owned", "Owned", "Counted as owned here too; the other deck keeps it"]] },
-  need: { title: "Not owned", opts: [["incoming", "Incoming", "Kept out of the deck until it arrives"], ["owned", "Owned", "You have it already; added as owned"]] },
+  bin: { title: "In the card bin", opts: [["incoming", "New Incoming", "Wait for a new copy; the bin keeps its copy"], ["owned", "Use Owned", "Taken out of the bin and into this deck"]] },
+  decks: { title: "In other decks", opts: [["swap", "Swap from Decks", "Moved out of the other deck; undo from either deck"], ["incoming", "New Incoming", "Wait for a new copy; the other deck keeps its copy"], ["owned", "Add to Collection", "Counted as owned here too; the other deck keeps its copy"]] },
+  need: { title: "Not owned", opts: [["incoming", "New Incoming", "Kept out of the deck until it arrives"], ["owned", "Add to Collection", "You have it already; added as owned"]] },
 };
 // "Not owned" starts as Owned for someone's first deck (so an existing deck goes straight in), Incoming after that.
 const firstDeck = () => ![...S.decks.values()].some(d => !d.example);

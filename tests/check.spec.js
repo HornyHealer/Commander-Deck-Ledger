@@ -59,7 +59,7 @@ test('creates a deck from the checked list, taking bin cards and waiting on the 
   // Every group starts as Incoming. Here bin cards come out of the bin; other-deck cards stay put (Owned).
   await expect(page.locator('#n-wait')).toHaveCount(0);
   for (const g of ['bin', 'decks', 'need']) await expect(page.locator(`[data-rule="${g}|incoming"]`)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.rule', { hasText: 'In other decks' }).locator('.seg .chip')).toHaveText(['Swap decks', 'Incoming', 'Owned']);
+  await expect(page.locator('.rule', { hasText: 'In other decks' }).locator('.seg .chip')).toHaveText(['Swap from Decks', 'New Incoming', 'Add to Collection']);
   await page.click('[data-rule="bin|owned"]');
   await page.click('[data-rule="decks|owned"]');
   await page.fill('#n-name', 'Goblin Time');
@@ -292,4 +292,13 @@ test('an incoming card can be grabbed from another deck, picked from every deck 
   await page.click('[data-act="home"]');
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
   await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
+});
+
+test('the collection buttons say what they do', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Arcane Signet\n1 Lightning Bolt\n1 Rhystic Study');
+  await page.click('[data-act="chk-create"]');
+  await expect(page.locator('.rule', { hasText: 'In the card bin' }).locator('.seg .chip')).toHaveText(['New Incoming', 'Use Owned']);
+  await expect(page.locator('.rule', { hasText: 'In other decks' }).locator('.seg .chip')).toHaveText(['Swap from Decks', 'New Incoming', 'Add to Collection']);
+  await expect(page.locator('.rule', { hasText: 'Not owned' }).locator('.seg .chip')).toHaveText(['New Incoming', 'Add to Collection']);
 });

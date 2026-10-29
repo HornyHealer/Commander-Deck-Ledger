@@ -47,19 +47,19 @@ In **New deck** and **Check a list**, paste an Archidekt deck link and press **F
 
 The Worker deploys automatically when anything in `worker/` changes, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, and then fetches a real deck to check it works. It runs on Cloudflare's free plan.
 
-In **New deck**, a "Your collection" section sorts the list's cards into In the card bin, In other decks and Not owned, each with Swap decks / Incoming / Owned buttons (the same as creating a deck from Check a list). Not owned starts as Owned for someone's first deck and Incoming after that.
+In **New deck**, a "Your collection" section sorts the list's cards into In the card bin, In other decks and Not owned, each with buttons for where the cards come from (the same as creating a deck from Check a list). Not owned starts as Add to Collection for someone's first deck and New Incoming after that.
 
 ## Check a list
 
-**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "From your check" section has one row of buttons per group, always in the order Swap decks, Incoming, Owned (where they apply), and every group starts on **Incoming**:
+**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "Your collection" section has one row of buttons per group, and every group starts on **New Incoming**:
 
-| Group | Choices |
+| Group | Buttons |
 | --- | --- |
-| In the card bin | **Incoming** (wait for another copy) or **Owned** (taken out of the bin) |
-| In other decks | **Swap decks** (moved out of that deck, logged in both decks' history and undoable from either), **Incoming** or **Owned** (the other deck keeps it too) |
-| Not owned | **Incoming** or **Owned** |
+| In the card bin | **New Incoming** (wait for a new copy) or **Use Owned** (taken out of the bin) |
+| In other decks | **Swap from Decks** (moved out of that deck, logged in both decks' history and undoable from either), **New Incoming** or **Add to Collection** (the other deck keeps its copy too) |
+| Not owned | **New Incoming** or **Add to Collection** |
 
-Each row's cards are behind a **Show cards** toggle. With Swap decks chosen, a card that's in more than one of your decks gets a picker for which deck it comes from.
+Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen, a card that's in more than one of your decks gets a picker for which deck it comes from.
 
 ## Bracket and roles
 
