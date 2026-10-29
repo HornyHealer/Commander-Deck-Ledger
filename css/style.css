@@ -576,3 +576,12 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .grabbox, .grabbox .grab-src, .grabbox .grab { height: 32px; }
 }
 .site-foot .install { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* Archidekt link + Fetch */
+.linkrow { display: flex; gap: 0; }
+.linkrow .field { flex: 1; min-width: 0; }
+.linkrow .btn { flex: none; margin-left: -1px; }
+.fetch-msg { margin: 6px 0 0; font-size: 12px; color: var(--good); }
+.fetch-msg.bad { color: var(--bad); }
+.rules-empty { margin: 0; padding: 10px 12px; font-size: 13px; }
+.check-input > .f { display: grid; gap: 6px; }

@@ -17,6 +17,7 @@ Track Commander decks: every swap, every cut, every card you own, cards on the w
 | `firestore.rules` | Database security rules to paste into Firebase |
 | `data/cards.json` | The card list, built from Scryfall: name, mana cost, type, color identity, Commander legality, Game Changer status, partner rules, bracket and role flags, and Scryfall's permanent card ID |
 | `scripts/build-cards.mjs` | Builds `data/cards.json` from Scryfall's bulk data |
+| `worker/` | The Cloudflare Worker behind the Archidekt **Fetch** button (deployed by `.github/workflows/worker.yml`) |
 | `data/example-deck.json` | The "Try an example deck" deck |
 | `tests/` | Automatic tests |
 
@@ -39,6 +40,14 @@ When cards are on the way (printed, bought or borrowed), stage the swap on the b
 Every card in a deck's list counts as owned, however you got it (printed, bought or traded), so **Save change** adds new cards to the owned list right away. When creating a deck, cards you don't have yet go in the optional **Still waiting on** box and start out as an incoming change. Decks from older versions of the site that had cards not marked as owned are converted automatically: those cards move into an incoming change.
 
 In the saved data the owned list is still stored as `printed`, so older backups and synced decks keep working.
+
+## Archidekt links
+
+In **New deck** and **Check a list**, paste an Archidekt deck link and press **Fetch** (or Enter) to fill in the deck list. Browsers can't read Archidekt's deck data from another site, so a small Cloudflare Worker (`worker/`, at `cdl-archidekt.deckledger.workers.dev`) fetches it and returns the plain-text list; the maybeboard and sideboard are left out and commanders are tagged. It only accepts Archidekt links and only answers this site. The deck must be public or unlisted on Archidekt. Archidekt's deck data isn't an official public API, so if they change it the Fetch button may stop working until the Worker is updated; pasting a list always works.
+
+The Worker deploys automatically when anything in `worker/` changes, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, and then fetches a real deck to check it works. It runs on Cloudflare's free plan.
+
+In **New deck**, a "Your collection" section sorts the list's cards into In the card bin, In other decks and Not owned, each with Swap decks / Incoming / Owned buttons (the same as creating a deck from Check a list). Not owned starts as Owned for someone's first deck and Incoming after that.
 
 ## Check a list
 

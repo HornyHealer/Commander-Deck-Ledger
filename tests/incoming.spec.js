@@ -116,20 +116,24 @@ test('Save change counts new cards as owned right away, with no print step', asy
   await expect(page.locator('.plist .row', { hasText: 'Back to Basics' })).toContainText('In deck');
 });
 
-test('a new deck can list cards it is still waiting on', async ({ page }) => {
+test('a new deck sorts its cards by what you own; not-owned cards can wait as incoming', async ({ page }) => {
   await page.click('[data-act="home"]');
   await page.click('[data-act="new"]');
   await page.fill('#n-name', 'Waiting Room');
-  await page.fill('#n-list', "1 Vela the Night-Clad [Commander]\n1 Rhystic Study\n98 Island");
-  await page.fill('#n-wait', '1 Rhystic Study');
+  await page.fill('#n-list', "1 Vela the Night-Clad [Commander]\n1 Back to Basics\n98 Island");
+  await expect(page.locator('#n-wait')).toHaveCount(0);
+  // Not this person's first deck, so not-owned cards start as Incoming. Vela is owned in other decks.
+  await expect(page.locator('[data-rule="need|incoming"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('[data-rule="decks|owned"]');
   await page.click('[data-dlg="create"]');
   await expect(page.locator('.summary')).toContainText('99');
   await expect(page.locator('.summary')).toContainText('+1 incoming');
-  await expect(page.locator('.inc')).toContainText('Rhystic Study');
-  await expect(row(page, 'Rhystic Study')).toHaveCount(0);
+  await expect(page.locator('.inc')).toContainText('Back to Basics');
+  await expect(row(page, 'Back to Basics')).toHaveCount(0);
   // 99 cards plus 1 incoming makes 100, so the card count isn't a rules problem.
   await expect(page.locator('.summary')).toContainText('Legal');
   await page.locator('.inc [data-arrive]').click();
-  await expect(row(page, 'Rhystic Study')).toHaveCount(1);
+  await expect(row(page, 'Back to Basics')).toHaveCount(1);
   await expect(page.locator('.summary')).toContainText('100');
 });
+

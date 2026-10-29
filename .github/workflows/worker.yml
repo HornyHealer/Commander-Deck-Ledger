@@ -1,0 +1,57 @@
+# Deploys the Archidekt import Worker (worker/) to Cloudflare whenever it changes, then checks it
+# against a real public deck. Needs the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repo secrets.
+name: Deploy Archidekt import
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the deck converter
+        run: |
+          node --input-type=module -e "
+          import { deckToText, parseDeckId } from './worker/src/convert.mjs';
+          const d = { name: 'T', categories: [{ name: 'Commander', isPremier: true, includedInDeck: true }, { name: 'Maybeboard', includedInDeck: false }],
+            cards: [{ quantity: 1, categories: ['Commander'], card: { oracleCard: { name: 'Krenko, Mob Boss' } } },
+                    { quantity: 30, categories: ['Land'], card: { oracleCard: { name: 'Mountain' } } },
+                    { quantity: 1, categories: ['Maybeboard'], card: { oracleCard: { name: 'Sol Ring' } } }] };
+          const o = deckToText(d);
+          if (o.text !== '1x Krenko, Mob Boss [Commander]\n30x Mountain' || o.count !== 31) { console.log(o); process.exit(1); }
+          if (parseDeckId('https://archidekt.com/decks/26238673/galio_soraka_larp') !== '26238673') process.exit(1);
+          console.log('converter ok');"
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+      - name: Fetch a real deck through it
+        run: |
+          url="https://cdl-archidekt.deckledger.workers.dev/?deck=26238673"
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o out.json -w '%{http_code}' -H "Origin: https://hornyhealer.github.io" "$url" || echo 000)
+            [ "$code" = "200" ] && break; sleep 10
+          done
+          head -c 400 out.json; echo
+          node -e "
+          const fs = require('fs'); let o = {}; try { o = JSON.parse(fs.readFileSync('out.json', 'utf8')); } catch {}
+          const line = s => String(s).replace(/\r?\n/g, ' ').slice(0, 500);
+          if ('$code' !== '200' || !(o.count > 0)) { console.log('::error title=Archidekt import::HTTP $code ' + line(JSON.stringify(o))); process.exit(1); }
+          console.log('::notice title=Archidekt import::Fetched \"' + o.name + '\" with ' + o.count + ' cards; commanders: ' + o.commanders.join(' & ') + '. First lines: ' + line(o.text.split('\n').slice(0, 4).join(' | ')));"

@@ -315,6 +315,48 @@ function binPartner(d, e) {
   if (e.pair) { const dk = S.decks.get(e.pair.deck); const te = dk && dk.log.find(x => x.id === e.pair.entry); return te ? { deck: dk, entry: te } : null; }
   return null;
 }
+// ---------- Archidekt link import (through the Cloudflare Worker in worker/) ----------
+const ARCH_PROXY = "https://cdl-archidekt.deckledger.workers.dev/";
+const archId = s => { const t = String(s || "").trim(); const m = t.match(/archidekt\.com\/(?:api\/)?decks\/(\d+)/i); return m ? m[1] : /^\d{1,12}$/.test(t) ? t : ""; };
+const ARCH_MSG = {
+  "bad-link": "That doesn't look like an Archidekt deck link. It should look like archidekt.com/decks/12345/deck-name.",
+  "not-found": "Archidekt couldn't find that deck. If it's private, set it to public or unlisted on Archidekt, or paste the list instead.",
+  private: "That deck is private on Archidekt. Set it to public or unlisted there, or paste the list instead.",
+  empty: "That deck has no cards in it yet.",
+  network: "Couldn't reach the import service. Check your connection, or paste the list instead.",
+};
+async function fetchArchidekt(link) {
+  const id = archId(link); if (!id) throw new Error("bad-link");
+  let res; try { res = await fetch(ARCH_PROXY + "?deck=" + encodeURIComponent(id)); } catch { throw new Error("network"); }
+  let body = {}; try { body = await res.json(); } catch {}
+  if (!res.ok || !body.text) throw new Error(body.error || "upstream");
+  return body;
+}
+const archMsg = err => ARCH_MSG[err && err.message] || "Archidekt didn't answer properly. Try again in a minute, or paste the list instead.";
+// Fetch button: fills the deck list box ("n" = New deck popup, "chk" = Check a list).
+async function archFetch(where, btn) {
+  const linkEl = $(where === "n" ? "#n-link" : "#chk-link");
+  const link = linkEl ? linkEl.value : "";
+  const say = (t, bad) => { const msg = $(where === "n" ? "#n-fetch-msg" : "#chk-fetch-msg"); if (msg) { msg.textContent = t; msg.className = "fetch-msg" + (bad ? " bad" : ""); msg.hidden = !t; } };
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.dataset.label || btn.innerHTML; btn.innerHTML = "Fetching…"; }
+  say("");
+  try {
+    const deck = await fetchArchidekt(link);
+    if (where === "n" && S.dialog && S.dialog.kind === "new") {
+      const dl = S.dialog; dl.text = deck.text; dl.link = link.trim(); dl.cmdTouched = false;
+      const nm = $("#n-name"); if (nm && !nm.value.trim() && deck.name) dl.name = deck.name; else if (nm) dl.name = nm.value;
+      const ds = $("#n-desc"); if (ds) dl.desc = ds.value;
+      renderDialog();
+    } else if (where === "chk") {
+      CHECK_TEXT = deck.text; CHECK_LINK = link.trim();
+      try { localStorage.setItem("cdl-check-text", CHECK_TEXT); localStorage.setItem("cdl-check-link", CHECK_LINK); } catch {}
+      const ta = $("#chk-list"); if (ta) ta.value = CHECK_TEXT; updateCheck();
+    }
+    say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
+  } catch (err) { say(archMsg(err), true); }
+  finally { const b = $(where === "n" ? '[data-arch="n"]' : '[data-arch="chk"]'); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
+}
+
 // ---------- collection check: which cards of a pasted list you already own ----------
 function collectionCheck(cards) {
   const bin = new Map(binRows().map(r => [r.n, r]));
@@ -330,11 +372,11 @@ function collectionCheck(cards) {
     return { n: c.n, q: c.q, fromBin, fromDecks, need: c.q - fromBin - fromDecks, decks, binFrom: b ? b.srcs.map(x => x.name) : [], binInc: b && b.inc, incoming: incoming.get(c.n) || [] };
   });
 }
-let CHECK_TEXT = ""; try { CHECK_TEXT = localStorage.getItem("cdl-check-text") || ""; } catch {}
+let CHECK_TEXT = "", CHECK_LINK = ""; try { CHECK_TEXT = localStorage.getItem("cdl-check-text") || ""; CHECK_LINK = localStorage.getItem("cdl-check-link") || ""; } catch {}
 function renderCheck() {
   return `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
   <div class="dhead"><div><div class="eyebrow"><span class="label">Collection</span></div><h2>Check a list</h2><div class="dn">Paste any deck list to see which cards you already own</div></div></div>
-  <div class="check-grid"><div class="check-input"><label class="f"><span class="label">Deck list</span><textarea class="field" id="chk-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(CHECK_TEXT)}</textarea></label>
+  <div class="check-grid"><div class="check-input"><div class="f"><label class="label" for="chk-link">Archidekt link (optional)</label><div class="linkrow"><input class="field" id="chk-link" placeholder="https://archidekt.com/decks/…" value="${esc(CHECK_LINK)}" autocomplete="off"><button class="btn sm" data-arch="chk" data-act="arch-fetch">${ICONS.down}Fetch</button></div><p class="fetch-msg" id="chk-fetch-msg" hidden></p></div><label class="f"><span class="label">Deck list</span><textarea class="field" id="chk-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(CHECK_TEXT)}</textarea></label>
     <p class="muted check-hint">Paste it the same way you'd import into Archidekt, one card per line. Cards are matched against your card bin first, then the decks you own them in.</p></div>
     <div id="chk-results" aria-live="polite">${checkResults()}</div></div>`;
 }
@@ -1620,11 +1662,11 @@ function renderDialog() {
     h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><h2 id="dlg-t">New deck</h2><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">
       <label class="f"><span class="label">Deck name</span><input class="field" id="n-name" placeholder="Flaming Cobra Chickens" value="${esc(dl.name || "")}"></label>
-      <label class="f"><span class="label">Archidekt link (optional)</span><input class="field" id="n-link" placeholder="https://archidekt.com/decks/…" value="${esc(dl.link || "")}"></label>
+      <div class="f"><label class="label" for="n-link">Archidekt link (optional)</label><div class="linkrow"><input class="field" id="n-link" placeholder="https://archidekt.com/decks/…" value="${esc(dl.link || "")}" autocomplete="off"><button class="btn sm" data-arch="n" data-act="arch-fetch">${ICONS.down}Fetch</button></div><p class="fetch-msg" id="n-fetch-msg" hidden></p></div>
       <label class="f"><span class="label">Short description (optional)</span><textarea class="field short" id="n-desc" maxlength="280" placeholder="What the deck does and how it wins">${esc(dl.desc || "")}</textarea></label>
       <label class="f"><span class="label">Deck list</span><textarea class="field" id="n-list" placeholder="1 Zagras, Thief of Heartbeats [Commander]&#10;1 Sol Ring&#10;1 Arcane Signet&#10;30 Mountain">${esc(dl.text || "")}</textarea></label>
       <div id="n-parse"></div>
-      ${dl.fromCheck ? `<div class="f"><span class="label">From your check</span><div id="n-rules" class="rules"></div></div>` : `<label class="f"><span class="label">Still waiting on (optional)</span><textarea class="field short" id="n-wait" placeholder="1 Rhystic Study&#10;1 Smothering Tithe">${esc(dl.wait || "")}</textarea><span class="fhint">Cards from the list you don't have yet, one per line. They're kept out of the deck as an incoming change until they arrive.</span></label>`}
+      <div class="f"><span class="label">Your collection</span><div id="n-rules" class="rules"></div></div>
     </div>
     <footer><span class="grow">The cards you have are saved as the deck's original list.</span><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="create">Create deck</button></footer></div>`;
   } else if (dl.kind === "edit") {
@@ -1745,7 +1787,9 @@ const RULE_OPTS = {
   decks: { title: "In other decks", opts: [["swap", "Swap decks", "Moved out of the other deck; undo from either deck"], ["incoming", "Incoming", "Wait for another copy; the other deck keeps its copy"], ["owned", "Owned", "Counted as owned here too; the other deck keeps it"]] },
   need: { title: "Not owned", opts: [["incoming", "Incoming", "Kept out of the deck until it arrives"], ["owned", "Owned", "You have it already; added as owned"]] },
 };
-const RULE_DEFAULTS = () => ({ bin: "incoming", decks: "incoming", need: "incoming" });
+// "Not owned" starts as Owned for someone's first deck (so an existing deck goes straight in), Incoming after that.
+const firstDeck = () => ![...S.decks.values()].some(d => !d.example);
+const RULE_DEFAULTS = () => ({ bin: "incoming", decks: "incoming", need: firstDeck() ? "owned" : "incoming" });
 // src: { cardName: deckId } picks which deck a card comes from when it's in more than one.
 function planFromCheck(cards, rules, src = {}) {
   const plan = { wait: [], steal: [], bin: [], groups: { bin: [], decks: [], need: [] } };
@@ -1765,7 +1809,9 @@ function planFromCheck(cards, rules, src = {}) {
   return plan;
 }
 function renderRules() {
-  const el = $("#n-rules"); const dl = S.dialog; if (!el || !dl || !dl.fromCheck) return;
+  const el = $("#n-rules"); const dl = S.dialog; if (!el || !dl || dl.kind !== "new") return;
+  dl.rules = dl.rules || RULE_DEFAULTS();
+  if (!((dl.parsed || {}).cards || []).length) { el.innerHTML = `<p class="muted rules-empty">Paste a list or fetch one from Archidekt to see which cards you already own.</p>`; return; }
   dl.open = dl.open || {}; dl.src = dl.src || {};
   const plan = planFromCheck((dl.parsed || { cards: [] }).cards, dl.rules, dl.src); dl.plan = plan;
   const cardList = (g, arr) => `<ul class="rule-list">${arr.map(x => {
@@ -1901,7 +1947,7 @@ document.addEventListener("click", e => {
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
-  if (act === "chk-create") return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, fromCheck: true, rules: RULE_DEFAULTS() });
+  if (act === "chk-create") return openDialog({ kind: "new", cmds: [], text: CHECK_TEXT, link: CHECK_LINK, rules: RULE_DEFAULTS() });
 
   if (act === "facet-clear") { S.allTypes = new Set(); S.allColors = new Set(); return render(); }
   if (act === "copy-all") { if ($(".menu")) render(); return copyText((S.allShown || []).filter(x => x.q > 0).sort((a, b) => a.n.localeCompare(b.n)).map(x => `${x.q}x ${x.n}`).join("\n"), "Card list"); }
@@ -1909,7 +1955,8 @@ document.addEventListener("click", e => {
   if (act === "bin-add") return openDialog({ kind: "binadd" });
   if (act === "copy-bin") return copyText(binRows().map(r => `${r.total}x ${r.n}`).join("\n"), "Bin list");
   if (act === "copy-menu") { S.menu = !S.menu; return render(); }
-  if (act === "new") return openDialog({ kind: "new", cmds: [] });
+  if (act === "new") return openDialog({ kind: "new", cmds: [], rules: RULE_DEFAULTS() });
+  if (act === "arch-fetch") return archFetch(t.dataset.arch, t);
   if (act === "home") return go("library");
   if (act === "edit" && d) return openDialog({ kind: "edit", id: d.id });
   if (act === "update" && d) return openDialog({ kind: "update", id: d.id });
@@ -1933,8 +1980,8 @@ document.addEventListener("click", e => {
     if (!p.cards.length) { toast("Paste a list first, one card per line."); return; }
     const cmds = [...document.querySelectorAll('input[name="n-cmd"]:checked')].map(i => i.value);
     const name = ($("#n-name").value || "").trim();
-    const plan = S.dialog.fromCheck ? planFromCheck(p.cards, S.dialog.rules, S.dialog.src) : null;
-    const wait = plan ? plan.wait : parseList(($("#n-wait") || {}).value || "").cards;
+    const plan = planFromCheck(p.cards, S.dialog.rules || RULE_DEFAULTS(), S.dialog.src);
+    const wait = plan.wait;
     const steal = plan ? plan.steal : [];
     const left = new Map(p.cards.map(c => [c.n, c.q])); for (const w of [...wait, ...steal]) { const v = (left.get(w.n) || 0) - w.q; if (v > 0) left.set(w.n, v); else left.delete(w.n); }
     const deck = newDeck({ name, cards: p.cards.filter(c => left.has(c.n)).map(c => ({ n: c.n, q: left.get(c.n) })), commanders: cmds });
@@ -2004,13 +2051,14 @@ document.addEventListener("input", e => {
   if (id === "n-name" && S.dialog) S.dialog.name = e.target.value;
   if (id === "n-link" && S.dialog) S.dialog.link = e.target.value;
   if (id === "n-desc" && S.dialog) S.dialog.desc = e.target.value;
-  if (id === "n-wait" && S.dialog) S.dialog.wait = e.target.value;
+  if (id === "chk-link") { CHECK_LINK = e.target.value; try { localStorage.setItem("cdl-check-link", CHECK_LINK); } catch {} return; }
   if (id === "chk-list") { CHECK_TEXT = e.target.value; try { localStorage.setItem("cdl-check-text", CHECK_TEXT); } catch {} return updateCheck(); }
   if (id === "ba-list" && S.dialog) { S.dialog.text = e.target.value; return updateBinAdd(); }
   if (id === "ba-search") return showBaSugg(e.target.value);
   if (id === "u-list" && S.dialog) { S.dialog.text = e.target.value; return updateDiff(); }
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.target.id === "n-link" || e.target.id === "chk-link")) { e.preventDefault(); const b = $(e.target.id === "n-link" ? '[data-arch="n"]' : '[data-arch="chk"]'); if (b && !b.disabled) archFetch(e.target.id === "n-link" ? "n" : "chk", b); return; }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".deckbox[data-open]")) { e.preventDefault(); return go("deck", e.target.dataset.open); }
   if (e.target.id === "ba-search") {
     const box = $("#g-ba"); if (!box || box.hidden) return; const btns = [...box.querySelectorAll("button")];

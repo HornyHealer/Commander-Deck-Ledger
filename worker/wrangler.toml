@@ -1,0 +1,6 @@
+# Deployed by .github/workflows/worker.yml with the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets.
+# Lives at https://cdl-archidekt.deckledger.workers.dev
+name = "cdl-archidekt"
+main = "src/index.mjs"
+compatibility_date = "2026-09-01"
+workers_dev = true
