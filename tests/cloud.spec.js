@@ -93,3 +93,31 @@ test('signing out hides the account and its decks', async ({ page }) => {
   await expect(page.locator('.deckbox')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'No decks yet' })).toBeVisible();
 });
+
+test('if Firebase fails to load at first, the site tries again by itself', async ({ page, context }) => {
+  let fails = 2;
+  await context.route('https://www.gstatic.com/firebasejs/**', r => {
+    if (fails > 0 && r.request().url().endsWith('firebase-app.js')) { fails--; return r.abort(); }
+    const file = r.request().url().split('/').pop();
+    r.fulfill({ path: path.join(FAKE, file), contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' } });
+  });
+  await page.goto('/');
+  await expect(page.locator('[data-act="signin"]').first()).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-act="sync-retry"]')).toHaveCount(0);
+});
+
+test('if Firebase keeps failing, "Sync unavailable" can be tapped to try again @phone', async ({ page, context }) => {
+  let down = true;
+  await context.route('https://www.gstatic.com/firebasejs/**', r => {
+    if (down) return r.abort();
+    const file = r.request().url().split('/').pop();
+    r.fulfill({ path: path.join(FAKE, file), contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' } });
+  });
+  await page.goto('/');
+  const chip = page.locator('[data-act="sync-retry"]');
+  await expect(chip).toBeVisible({ timeout: 12000 });
+  await expect(chip).toContainText('Sync unavailable');
+  down = false;
+  await chip.click();
+  await expect(page.locator('[data-act="signin"]').first()).toBeVisible({ timeout: 10000 });
+});

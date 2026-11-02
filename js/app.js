@@ -748,18 +748,27 @@ function cloudInit() {
   const cfg = window.LEDGER_FIREBASE;
   CLOUD.enabled = !!(cfg && cfg.apiKey && cfg.projectId);
   if (!CLOUD.enabled) return Promise.resolve();
+  CLOUD.failed = false; CLOUD.err = "";
   return new Promise(resolve => {
     let settled = false; const done = () => { if (!settled) { settled = true; resolve(); } };
     setTimeout(done, 4000); // don't hold the page if Firebase is slow to answer
-    Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-auth.js"), import(FB + "firebase-firestore.js")]).then(([appM, authM, fsM]) => {
-      const app = appM.initializeApp(cfg);
+    // Phones (an app opened from the home screen especially) can fail the first request while the
+    // connection wakes up, so try loading Firebase a few times before giving up.
+    // Check the files can be downloaded first: a failed import can be remembered by the browser for the rest of
+    // the visit, which would make retrying pointless.
+    const files = ["firebase-app.js", "firebase-auth.js", "firebase-firestore.js"];
+    const reach = tries => Promise.all(files.map(f => fetch(FB + f).then(r => { if (!r.ok) throw new Error("HTTP " + r.status + " for " + f); })))
+      .catch(err => tries > 1 ? new Promise(r => setTimeout(r, tries === 3 ? 1000 : 3000)).then(() => reach(tries - 1)) : Promise.reject(err));
+    const load = tries => reach(tries).then(() => Promise.all(files.map(f => import(FB + f))));
+    load(3).then(([appM, authM, fsM]) => {
+      const app = appM.getApps && appM.getApps().length ? appM.getApp() : appM.initializeApp(cfg);
       const auth = authM.getAuth(app);
       let db;
       try { db = fsM.initializeFirestore(app, { localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); }
       catch { db = fsM.getFirestore(app); }
       CLOUD.api = { authM, fsM, auth, db };
       authM.onAuthStateChanged(auth, user => { onUser(user); done(); });
-    }).catch(() => { CLOUD.failed = true; done(); safeRender(); });
+    }).catch(err => { CLOUD.failed = true; CLOUD.err = String(err && (err.code || err.message) || err || "unknown error").slice(0, 200); done(); safeRender(); });
   });
 }
 function stopCloud() { CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = []; synced.clear(); syncedBinRev = 0; CLOUD.loaded = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = false; }
@@ -862,7 +871,7 @@ async function signIn() {
     const code = e && e.code || "";
     if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") { try { await authM.signInWithRedirect(auth, provider); } catch {} return; }
     if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
-    toast(code === "auth/unauthorized-domain" ? "This website isn't on Firebase's list of authorized domains yet." : code === "auth/network-request-failed" ? "Couldn't reach Google. Check your connection and try again." : "Couldn't sign in. Try again.");
+    toast(code === "auth/unauthorized-domain" ? "This website isn't on Firebase's list of authorized domains yet." : code === "auth/network-request-failed" ? "Couldn't reach Google. Check your connection and try again." : `Couldn't sign in${code ? " (" + code + ")" : ""}. Try again.`);
   }
 }
 async function signOutNow() {
@@ -873,7 +882,7 @@ async function signOutNow() {
 }
 function accountHtml() {
   if (!CLOUD.enabled) return "";
-  if (CLOUD.failed) return `<span class="sync-chip warn" title="Firebase didn't load">Sync unavailable</span>`;
+  if (CLOUD.failed) return `<button class="sync-chip warn chipbtn" data-act="sync-retry" title="Firebase didn't load${CLOUD.err ? ": " + esc(CLOUD.err) : ""}. Tap to try again.">Sync unavailable · Retry</button>`;
   if (!CLOUD.authReady) return "";
   if (!CLOUD.user) return `<button class="btn" data-act="signin">${ICONS.user}Sign in</button>`;
   const initials = (CLOUD.user.name || CLOUD.user.email || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -1975,6 +1984,11 @@ document.addEventListener("click", e => {
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Owned list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
+  if (act === "sync-retry") {
+    t.disabled = true; t.textContent = "Connecting…";
+    cloudInit().then(() => { if (CLOUD.failed) toast("Sync still couldn't load (" + (CLOUD.err || "unknown error") + "). Check your connection, or try in the browser."); else { toast("Sync is back."); if (S.ready && !CLOUD.user) render(); } safeRender(); });
+    return;
+  }
   if (act === "bench-toggle") { S.benchOpen = !S.benchOpen; const tt = $(".toast"); if (tt) tt.hidden = true; render(); if (S.benchOpen) { const el = $(".bench.open"); if (el) el.scrollTop = 0; } return; }
   if (act === "install" && installEvt) { const ev = installEvt; ev.prompt(); ev.userChoice.finally(() => { installEvt = null; render(); }); return; }
   if (act === "save-incoming" && d) return saveIncoming(d);
