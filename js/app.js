@@ -390,11 +390,13 @@ async function openCombos(d) {
 }
 const CSB = "https://commanderspellbook.com";
 function comboHtml(c, missing) {
-  const cards = c.cards.map(n => missing && missing.includes(n) ? `<span class="cb-card miss">${cardLink(n)}<em>missing</em></span>` : `<span class="cb-card">${cardLink(n)}</span>`).join('<span class="cb-plus">+</span>');
-  const extra = c.templates.length ? `<span class="cb-plus">+</span><span class="cb-card tmpl">${c.templates.map(esc).join(", ")}</span>` : "";
+  // Each card: its name, with its picture underneath.
+  const card = n => { const miss = missing && missing.includes(n); return `<span class="cb-card${miss ? " miss" : ""}"><span class="cb-name">${cardLink(n)}${miss ? "<em>missing</em>" : ""}</span><img class="cb-img" src="${esc(imgUrl(n))}" alt="${esc(n)}" loading="lazy" onerror="this.remove()"></span>`; };
+  const cards = c.cards.map(card).join('<span class="cb-plus" aria-hidden="true">+</span>');
+  const extra = c.templates.length ? `<span class="cb-plus" aria-hidden="true">+</span><span class="cb-card tmpl"><span class="cb-name">${c.templates.map(esc).join(", ")}</span></span>` : "";
   const prod = c.produces.slice(0, 4).map(p => `<span class="cb-prod">${esc(p)}</span>`).join("") + (c.produces.length > 4 ? `<span class="cb-prod more">+${c.produces.length - 4} more</span>` : "");
   const steps = c.steps ? c.steps.split(/\n+/).filter(Boolean) : [];
-  return `<li class="combo"><div class="cb-cards">${cards}${extra}${c.twoCard ? '<span class="flag warn cb-two">Two-card</span>' : ""}</div><div class="cb-prods">${prod}</div>
+  return `<li class="combo"><div class="cb-cards">${cards}${extra}</div><div class="cb-prods">${c.twoCard ? '<span class="flag warn cb-two">Two-card</span>' : ""}${prod}</div>
     ${steps.length || c.prereq ? `<details class="cb-more"><summary>How it works</summary>${c.prereq ? `<p class="cb-pre"><b>Setup:</b> ${esc(c.prereq).replace(/\n/g, " ")}</p>` : ""}${c.mana ? `<p class="cb-pre"><b>Mana:</b> ${esc(c.mana)}</p>` : ""}${steps.length ? `<ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</details>` : ""}
     ${c.id ? `<a class="cb-link" href="${CSB}/combo/${encodeURIComponent(c.id)}/" target="_blank" rel="noopener">View on Commander Spellbook ${ICONS.ext}</a>` : ""}</li>`;
 }
@@ -404,8 +406,11 @@ function combosDialogHtml(dl) {
   else if (dl.state === "err") body = `<p class="fetch-msg bad">${esc(dl.err)}</p><button class="btn sm" data-act="combos-retry">Try again</button>`;
   else {
     const inc = dl.data.included, almost = dl.data.almost; const shown = dl.showAll ? almost : almost.slice(0, 10);
-    body = `<section class="cb-sec"><h3>In this deck <span class="mono">${inc.length}</span></h3>${inc.length ? `<ul class="combos">${inc.map(c => comboHtml(c)).join("")}</ul>` : `<p class="muted">No known combos in this deck.</p>`}</section>
-      <section class="cb-sec"><h3>One card away <span class="mono">${dl.data.almostTotal}</span></h3>${almost.length ? `<ul class="combos">${shown.map(c => comboHtml(c, c.missing)).join("")}</ul>${almost.length > shown.length ? `<button class="btn sm ghost" data-act="combos-more">Show ${almost.length - shown.length} more</button>` : ""}${dl.data.almostTotal > almost.length && dl.showAll ? `<p class="muted cb-note">Showing the ${almost.length} most popular.</p>` : ""}` : `<p class="muted">None found.</p>`}</section>`;
+    body = `<section class="cb-sec"><h3>In this deck <span class="mono">${inc.length}</span></h3>${inc.length ? `<ul class="combos">${inc.map(c => comboHtml(c)).join("")}</ul>` : `<p class="muted">No known combos in this deck.</p>`}</section>`;
+    // Combos one card away stay tucked away until asked for.
+    if (almost.length) body += dl.showPossible
+      ? `<section class="cb-sec" id="cb-possible"><h3>One card away <span class="mono">${dl.data.almostTotal}</span><button class="btn sm ghost cb-hide" data-act="combos-possible">Hide</button></h3><ul class="combos">${shown.map(c => comboHtml(c, c.missing)).join("")}</ul>${almost.length > shown.length ? `<button class="btn sm ghost" data-act="combos-more">Show ${almost.length - shown.length} more</button>` : ""}${dl.data.almostTotal > almost.length && dl.showAll ? `<p class="muted cb-note">Showing the ${almost.length} most popular.</p>` : ""}</section>`
+      : `<button class="btn cb-possible" data-act="combos-possible" aria-expanded="false">${ICONS.caret}Show possible combos<span class="mono muted">${dl.data.almostTotal}</span></button><p class="muted cb-note">Combos this deck is one card away from.</p>`;
   }
   return `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Combos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">${esc(d.name)}: combos the deck already has, and ones it's one card away from.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">${body}</div>
@@ -2045,6 +2050,7 @@ document.addEventListener("click", e => {
   if (act === "combos" && d) return openCombos(d);
   if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
   if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
+  if (act === "combos-possible" && S.dialog) { S.dialog.showPossible = !S.dialog.showPossible; renderDialog(); if (S.dialog.showPossible) { const el = $("#cb-possible"); if (el) el.scrollIntoView({ block: "start", behavior: "smooth" }); } return; }
   if (act === "sync-retry") {
     t.disabled = true; t.textContent = "Connecting…";
     cloudInit().then(() => { if (CLOUD.failed) toast("Sync still couldn't load (" + (CLOUD.err || "unknown error") + "). Check your connection, or try in the browser."); else { toast("Sync is back."); if (S.ready && !CLOUD.user) render(); } safeRender(); });

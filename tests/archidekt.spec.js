@@ -153,6 +153,8 @@ const COMBOS = {
 test('Combos lists the combos in a deck and one card away, and counts two-card combos in the bracket @phone', async ({ page, context }) => {
   let sent = null;
   await context.route('https://cdl-archidekt.deckledger.workers.dev/combos', r => { sent = JSON.parse(r.request().postData() || '{}'); r.fulfill({ contentType: 'application/json', body: JSON.stringify(COMBOS) }); });
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  await context.route(/api\.scryfall\.com\/cards\/named.*format=image/, r => r.fulfill({ body: PNG, contentType: 'image/png' }));
   await importBackup(page);
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
   await page.click('[data-act="toggle-bracket"]');
@@ -164,6 +166,12 @@ test('Combos lists the combos in a deck and one card away, and counts two-card c
   await expect(dlg.locator('.combo').first()).toContainText("Thassa's Oracle");
   await expect(dlg.locator('.combo').first()).toContainText('Win the game');
   await expect(dlg.locator('.combo').first().locator('.cb-link')).toHaveAttribute('href', 'https://commanderspellbook.com/combo/1414-2730/');
+  // Each card shows its picture under its name.
+  await expect(dlg.locator('.combo').first().locator('.cb-img')).toHaveCount(2);
+  // Combos one card away stay hidden until asked for.
+  await expect(dlg.locator('.cb-card.miss')).toHaveCount(0);
+  await dlg.locator('[data-act="combos-possible"]').click();
+  await expect(dlg.locator('#cb-possible')).toContainText('One card away');
   await expect(dlg.locator('.cb-card.miss')).toContainText('Rings of Brighthearth');
   await expect(dlg.locator('.cb-credit a')).toHaveAttribute('href', 'https://commanderspellbook.com');
   expect(sent.commanders).toEqual(["Captain N'ghathrod"]);
