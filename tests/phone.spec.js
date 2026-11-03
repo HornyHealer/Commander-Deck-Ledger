@@ -65,3 +65,26 @@ test('the site can be installed as an app', async ({ page, request }, info) => {
   await page.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => {}; e.userChoice = Promise.resolve({ outcome: 'dismissed' }); window.dispatchEvent(e); });
   await expect(page.locator('.site-foot [data-act="install"]')).toBeVisible();
 });
+
+test('incoming swaps stay lined up when only some cards have a Grab button @phone', async ({ page }) => {
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
+  const sheet = await page.locator('.sheet-bar').isVisible();
+  for (const [cut, add] of [['Vampire Nighthawk', 'Necropotence'], ['Gifted Aetherborn', "Captain N'ghathrod"], ['Grim Hireling', 'Rhystic Study']]) {
+    await page.click(`[data-cut="${cut}"]`);
+    if (sheet && !(await page.locator('.bench.open').count())) await page.click('.sheet-bar');
+    await page.fill('#s-in', add);
+    await page.locator('#g-in button .nm', { hasText: new RegExp('^' + add + '$') }).click();
+    if (sheet) await page.click('.sheet-bar');
+  }
+  if (sheet) await page.click('.sheet-bar');
+  await page.click('[data-act="save-incoming"]');
+  await expect(page.locator('.inc .grab')).toHaveCount(1);
+  // Each leaving card sits on the same line as the card replacing it.
+  const offsets = await page.evaluate(() => [...document.querySelectorAll('.inc .swap')].map(sw => {
+    const o = sw.querySelector('.o').getBoundingClientRect(), i = sw.querySelector('.i').getBoundingClientRect();
+    return Math.round(Math.abs(o.top - i.top));
+  }));
+  expect(offsets).toEqual([0, 0, 0]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

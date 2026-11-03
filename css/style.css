@@ -537,11 +537,13 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 /* Incoming box: the source picker and Grab button sit in their own column, the same size on every row */
 .swaps.grabs { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 4px; align-items: center; }
 .swaps.grabs .o, .swaps.grabs .i { overflow-wrap: break-word; word-break: normal; }
-.swaps.grabs .gx:empty { display: none; }
+/* Every row keeps its Grab cell, even when empty, so the columns stay lined up. */
+.swaps.grabs .gx:empty { min-height: 0; }
 @media (max-width: 600px) {
   /* Phones: out → in side by side; a Grab control goes on its own line under its card. */
   .swaps.grabs:not(.adds) { grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); }
   .swaps.grabs:not(.adds) .gx { grid-column: 3; margin-bottom: 4px; }
+  .swaps.grabs:not(.adds) .gx:empty { display: none; }
 }
 .swaps.grabs.adds { grid-template-columns: fit-content(62%) auto; column-gap: 12px; }
 .swaps.grabs .i { overflow-wrap: anywhere; }
