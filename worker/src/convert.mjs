@@ -40,3 +40,32 @@ export function deckToText(data) {
     commanders: cmds.map(r => r.name),
   };
 }
+
+// ---------- combos (Commander Spellbook) ----------
+// Cleans the deck the site sends: { commanders: [names], main: [{ card, quantity }] }.
+export function cleanDeck(body) {
+  const name = s => (typeof s === "string" ? s.trim().slice(0, 200) : "");
+  const commanders = (Array.isArray(body && body.commanders) ? body.commanders : []).map(c => name(typeof c === "string" ? c : c && c.card)).filter(Boolean).slice(0, 4);
+  const main = (Array.isArray(body && body.main) ? body.main : []).map(c => ({ card: name(c && c.card), quantity: Math.min(99, Math.max(1, parseInt(c && c.quantity, 10) || 1)) })).filter(c => c.card).slice(0, 250);
+  return { commanders: commanders.map(card => ({ card, quantity: 1 })), main };
+}
+
+// Keeps only what the ledger shows from Commander Spellbook's find-my-combos answer.
+export function trimCombos(data, deck) {
+  const have = new Set();
+  for (const c of [...(deck.commanders || []), ...(deck.main || [])]) { const n = c.card.toLowerCase(); have.add(n); have.add(n.split(" // ")[0]); }
+  const owned = n => have.has(n.toLowerCase()) || have.has(n.split(" // ")[0].toLowerCase());
+  const r = (data && data.results) || {};
+  const one = v => {
+    const cards = (v.uses || []).map(u => (u.card && u.card.name) || "").filter(Boolean);
+    const templates = (v.requires || []).map(t => (t.template && t.template.name) || "").filter(Boolean);
+    const produces = (v.produces || []).map(p => (p.feature && p.feature.name) || "").filter(Boolean);
+    const prereq = [v.easyPrerequisites, v.notablePrerequisites, v.otherPrerequisites].filter(Boolean).join("\n");
+    return { id: String(v.id || ""), cards, templates, produces, steps: String(v.description || ""), prereq, mana: String(v.manaNeeded || ""), bracketTag: v.bracketTag || "", popularity: v.popularity || 0, twoCard: cards.length === 2 && !templates.length };
+  };
+  const byPop = (a, b) => (b.popularity || 0) - (a.popularity || 0);
+  const included = (Array.isArray(r.included) ? r.included : []).map(one).sort((a, b) => a.cards.length - b.cards.length || byPop(a, b));
+  const allAlmost = Array.isArray(r.almostIncluded) ? r.almostIncluded : [];
+  const almost = allAlmost.map(one).map(c => ({ ...c, missing: c.cards.filter(n => !owned(n)) })).sort(byPop).slice(0, 40);
+  return { included, almost, almostTotal: allAlmost.length };
+}

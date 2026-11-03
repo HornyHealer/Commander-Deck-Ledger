@@ -82,6 +82,7 @@ const ICONS = {
   print: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 6V2.5h7V6"/><rect x="2" y="6" width="12" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/></svg>',
   printed: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m3.5 8.5 3 3 6-7"/></svg>',
   inbox: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v7M5 6.5 8 9.5l3-3"/><path d="M2.5 9.5h3l1 2h3l1-2h3V13.5h-11z"/></svg>',
+  combo: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.6 5.2C2.8 5.2 1.5 6.4 1.5 8s1.3 2.8 3.1 2.8c2.6 0 4.2-5.6 6.8-5.6 1.8 0 3.1 1.2 3.1 2.8s-1.3 2.8-3.1 2.8c-2.6 0-4.2-5.6-6.8-5.6z"/></svg>',
   tag: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 2.5h5l6 6-5 5-6-6z"/><circle cx="5.5" cy="5.5" r="1"/></svg>',
   list: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M3 8h10M3 12h6"/><path d="m11 11 1.5 1.5L15 10"/></svg>',
 };
@@ -359,6 +360,56 @@ async function archFetch(where, btn) {
     say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
   } catch (err) { say(archMsg(err), true); }
   finally { const b = $(`[data-arch="${where}"]`); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
+}
+
+// ---------- combos, from Commander Spellbook (through the same Cloudflare Worker) ----------
+// A short fingerprint of the deck list, so a combo check is only trusted until the list changes.
+function deckSig(d) { let h = 5381; const s = d.cur.map(c => c.n + ":" + c.q).sort().join("|"); for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); }
+// The deck's last combo check, if the list hasn't changed since.
+const deckCombos = d => d && d.combos && d.combos.sig === deckSig(d) ? d.combos : null;
+async function fetchCombos(d) {
+  const cmds = (d.commanders || []).filter(n => d.cur.some(c => c.n === n));
+  const body = { commanders: cmds, main: d.cur.filter(c => !cmds.includes(c.n)).map(c => ({ card: c.n, quantity: c.q })) };
+  let res; try { res = await fetch(ARCH_PROXY + "combos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); } catch { throw new Error("network"); }
+  let out = {}; try { out = await res.json(); } catch {}
+  if (!res.ok || !Array.isArray(out.included)) throw new Error(out.error || "upstream");
+  return out;
+}
+const COMBO_MSG = { network: "Couldn't reach the combo service. Check your connection and try again.", busy: "Commander Spellbook is busy right now. Try again in a minute." };
+async function openCombos(d) {
+  openDialog({ kind: "combos", id: d.id, state: "loading" });
+  try {
+    const data = await fetchCombos(d);
+    d.combos = { at: Date.now(), sig: deckSig(d), count: data.included.length, two: data.included.filter(c => c.twoCard).map(c => ({ cards: c.cards, produces: c.produces.slice(0, 3) })) };
+    save(d);
+    if (S.dialog && S.dialog.kind === "combos" && S.dialog.id === d.id) { S.dialog.state = "ok"; S.dialog.data = data; renderDialog(); }
+    render();
+  } catch (err) {
+    if (S.dialog && S.dialog.kind === "combos" && S.dialog.id === d.id) { S.dialog.state = "err"; S.dialog.err = COMBO_MSG[err.message] || "Commander Spellbook didn't answer properly. Try again in a minute."; renderDialog(); }
+  }
+}
+const CSB = "https://commanderspellbook.com";
+function comboHtml(c, missing) {
+  const cards = c.cards.map(n => missing && missing.includes(n) ? `<span class="cb-card miss">${cardLink(n)}<em>missing</em></span>` : `<span class="cb-card">${cardLink(n)}</span>`).join('<span class="cb-plus">+</span>');
+  const extra = c.templates.length ? `<span class="cb-plus">+</span><span class="cb-card tmpl">${c.templates.map(esc).join(", ")}</span>` : "";
+  const prod = c.produces.slice(0, 4).map(p => `<span class="cb-prod">${esc(p)}</span>`).join("") + (c.produces.length > 4 ? `<span class="cb-prod more">+${c.produces.length - 4} more</span>` : "");
+  const steps = c.steps ? c.steps.split(/\n+/).filter(Boolean) : [];
+  return `<li class="combo"><div class="cb-cards">${cards}${extra}${c.twoCard ? '<span class="flag warn cb-two">Two-card</span>' : ""}</div><div class="cb-prods">${prod}</div>
+    ${steps.length || c.prereq ? `<details class="cb-more"><summary>How it works</summary>${c.prereq ? `<p class="cb-pre"><b>Setup:</b> ${esc(c.prereq).replace(/\n/g, " ")}</p>` : ""}${c.mana ? `<p class="cb-pre"><b>Mana:</b> ${esc(c.mana)}</p>` : ""}${steps.length ? `<ol>${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</details>` : ""}
+    ${c.id ? `<a class="cb-link" href="${CSB}/combo/${encodeURIComponent(c.id)}/" target="_blank" rel="noopener">View on Commander Spellbook ${ICONS.ext}</a>` : ""}</li>`;
+}
+function combosDialogHtml(dl) {
+  const d = S.decks.get(dl.id); let body;
+  if (dl.state === "loading") body = `<p class="muted">Checking ${esc(d.name)} with Commander Spellbook…</p>`;
+  else if (dl.state === "err") body = `<p class="fetch-msg bad">${esc(dl.err)}</p><button class="btn sm" data-act="combos-retry">Try again</button>`;
+  else {
+    const inc = dl.data.included, almost = dl.data.almost; const shown = dl.showAll ? almost : almost.slice(0, 10);
+    body = `<section class="cb-sec"><h3>In this deck <span class="mono">${inc.length}</span></h3>${inc.length ? `<ul class="combos">${inc.map(c => comboHtml(c)).join("")}</ul>` : `<p class="muted">No known combos in this deck.</p>`}</section>
+      <section class="cb-sec"><h3>One card away <span class="mono">${dl.data.almostTotal}</span></h3>${almost.length ? `<ul class="combos">${shown.map(c => comboHtml(c, c.missing)).join("")}</ul>${almost.length > shown.length ? `<button class="btn sm ghost" data-act="combos-more">Show ${almost.length - shown.length} more</button>` : ""}${dl.data.almostTotal > almost.length && dl.showAll ? `<p class="muted cb-note">Showing the ${almost.length} most popular.</p>` : ""}` : `<p class="muted">None found.</p>`}</section>`;
+  }
+  return `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Combos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">${esc(d.name)}: combos the deck already has, and ones it's one card away from.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
+    <div class="db">${body}</div>
+    <footer><span class="grow cb-credit">Combo data from <a href="${CSB}" target="_blank" rel="noopener">Commander Spellbook</a></span><button class="btn primary" data-dlg="close">Done</button></footer></div>`;
 }
 
 // ---------- collection check: which cards of a pasted list you already own ----------
@@ -1053,7 +1104,7 @@ function renderLibrary() {
       <div class="cmd">${esc(cmd)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
       <div class="dname">${esc(d.name)}</div>
       ${d.desc ? `<div class="ddesc">${esc(d.desc)}</div>` : ""}
-      <div class="pipline">${ciPips(ci)}<span class="bpill" title="Bracket estimate">Bracket ${esc(bracketOf(d.cur).label)}</span></div>
+      <div class="pipline">${ciPips(ci)}<span class="bpill" title="Bracket estimate">Bracket ${esc(bracketOf(d.cur, deckCombos(d)).label)}</span></div>
       <div class="stats"><span><b>${t}</b> in deck</span><span><b>${printedTotal(d)}</b> owned</span><span><b>${changes}</b> changes</span></div>
       ${incN ? `<div class="pills"><div class="tp-pill tp-inc"><b class="mono">${incN}</b> incoming</div></div>` : ""}
       <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
@@ -1279,22 +1330,26 @@ function renderChecks(d, issues) {
 const BRACKET_NAMES = { 1: "Exhibition", 2: "Core", 3: "Upgraded", 4: "Optimized", 5: "cEDH" };
 let textFlagsReady = null; // false until the card list has been rebuilt with text flags
 const hasTextFlags = () => textFlagsReady || (textFlagsReady = CARDS.some(r => (r[4] | 0) >= 16));
-function bracketOf(cards) {
+// combos: the deck's last combo check (see deckCombos), so two-card combos count toward the bracket.
+function bracketOf(cards, combos) {
   const gc = [], mld = [], et = [];
   for (const c of cards) { const f = flagsOf(rec(c.n)); if (f & F.GAME_CHANGER) gc.push(c.n); if (f & F.LAND_DENIAL) mld.push(c.n); if (f & F.EXTRA_TURN) et.push(c.n); }
-  const lo = mld.length || gc.length > 3 ? 4 : gc.length ? 3 : et.length ? 2 : 1;
+  const two = combos && Array.isArray(combos.two) ? combos.two : [];
+  let lo = mld.length || gc.length > 3 ? 4 : gc.length ? 3 : et.length ? 2 : 1;
+  if (two.length && lo < 3) lo = 3;
   const reasons = [];
   if (gc.length > 3) reasons.push({ kind: "Game Changers", text: `${gc.length} Game Changers. Bracket 3 allows up to three, so this deck is bracket 4 or higher.`, cards: gc });
   else if (gc.length) reasons.push({ kind: "Game Changers", text: `${gc.length} Game Changer${gc.length === 1 ? "" : "s"}. Brackets 1 and 2 allow none and bracket 3 allows up to three.`, cards: gc });
   else reasons.push({ kind: "Game Changers", text: "No Game Changers, so brackets 1 and 2 are open to this deck." });
   if (mld.length) reasons.push({ kind: "Land denial", text: "Mass land denial, which only brackets 4 and 5 allow.", cards: mld });
+  if (two.length) reasons.push({ kind: "Combos", text: `${two.length} two-card combo${two.length === 1 ? "" : "s"}. Brackets 1 and 2 allow none, and bracket 3 only if it can't happen before turn six.`, cards: two.map(c => c.cards.join(" + ")) });
   if (et.length) reasons.push({ kind: "Extra turns", text: et.length >= 3 ? `${et.length} extra-turn cards. Bracket 1 allows none, and brackets 2 and 3 allow them only if they aren't chained together.` : "Bracket 1 allows no extra turns. Brackets 2 and 3 allow them as long as they aren't chained together.", cards: et });
-  return { lo, label: lo === 1 ? "1–2" : lo === 4 ? "4+" : String(lo), name: lo === 1 ? "Exhibition or Core" : BRACKET_NAMES[lo], gc, mld, et, reasons };
+  return { lo, label: lo === 1 ? "1–2" : lo === 4 ? "4+" : String(lo), name: lo === 1 ? "Exhibition or Core" : BRACKET_NAMES[lo], gc, mld, et, two, combosChecked: !!combos, reasons };
 }
 function renderBracket(b) {
   if (!S.showBracket) return "";
   return `<div class="checks bracket-why" id="deck-bracket"><p class="bracket-head"><b>Bracket ${esc(b.label)}</b> · ${esc(b.name)}</p><ul>${b.reasons.map(x => `<li><span class="flag ${x.cards ? "warn" : "good"}">${esc(x.kind)}</span><span>${esc(x.text)}${x.cards ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul>
-    <p class="muted bracket-note">This is the lowest bracket the cards allow. Two-card combos (none in brackets 1–2, none before turn six in bracket 3) and how fast the deck wins can push it higher, so settle the final number with your table.${hasTextFlags() ? "" : " Mass land denial and extra turns will be checked once the card list finishes updating."}</p></div>`;
+    <p class="muted bracket-note">This is the lowest bracket the cards allow. ${b.combosChecked ? "Two-card combos are counted from the deck's last combo check." : `Two-card combos aren't counted yet: press <b>Combos</b> to check this deck.`} How fast the deck wins can push it higher, so settle the final number with your table.${hasTextFlags() ? "" : " Mass land denial and extra turns will be checked once the card list finishes updating."}</p></div>`;
 }
 
 const ROLES = [["ramp", "Ramp", F.RAMP], ["draw", "Draw", F.DRAW], ["removal", "Removal", F.REMOVAL], ["wipe", "Wipes", F.WIPE], ["tutor", "Tutors", F.TUTOR], ["wincon", "Win cons", 0], ["protect", "Protection", 0]];
@@ -1405,7 +1460,7 @@ function renderDeck(d) {
   const mx = Math.max(1, ...curve);
   const lands = d.cur.filter(c => typeOf(c.n) === "L").reduce((a, c) => a + c.q, 0);
   const unknown = d.cur.filter(c => !rec(c.n)).length;
-  const issues = legality(d); const br = bracketOf(d.cur);
+  const issues = legality(d); const br = bracketOf(d.cur, deckCombos(d));
   const net = incomingNet(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
   const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : "No commander set";
   let h = `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
@@ -1416,6 +1471,7 @@ function renderDeck(d) {
     ${d.desc ? `<p class="ddesc">${esc(d.desc)}</p>` : ""}
   </div><div class="actions">
     <button class="btn" data-act="update">${ICONS.down}Update from Archidekt</button>
+    <button class="btn" data-act="combos">${ICONS.combo}Combos${deckCombos(d) ? `<span class="mono cb-count">${deckCombos(d).count}</span>` : ""}</button>
     <button class="btn" data-act="edit">Edit details</button>
   </div></div>
   <div class="summary">
@@ -1712,6 +1768,8 @@ function renderDialog() {
       <details class="u-paste"${dl.paste ? " open" : ""}><summary>Or paste a list instead</summary><textarea class="field" id="u-list" placeholder="Paste the full current list">${esc(dl.text || "")}</textarea></details>
       <div id="u-diff"></div></div>
     <footer><button class="btn ghost" data-dlg="close">Cancel</button>${saveLink ? `<button class="btn" data-dlg="to-bench-save" id="u-go-save" disabled>Save link &amp; put changes on the bench</button>` : ""}<button class="btn primary" data-dlg="to-bench" id="u-go" disabled>Put changes on the bench</button></footer></div>`;
+  } else if (dl.kind === "combos") {
+    h = combosDialogHtml(dl);
   } else if (dl.kind === "binadd") {
     h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Add to card bin</h2><p class="muted" style="margin:6px 0 0;font-size:13px">For cards you already own that aren't in a deck. Search for a card, or paste a list with one card per line like <span class="mono">2x Sol Ring</span>.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">
@@ -1984,6 +2042,9 @@ document.addEventListener("click", e => {
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Owned list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
+  if (act === "combos" && d) return openCombos(d);
+  if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
+  if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
   if (act === "sync-retry") {
     t.disabled = true; t.textContent = "Connecting…";
     cloudInit().then(() => { if (CLOUD.failed) toast("Sync still couldn't load (" + (CLOUD.err || "unknown error") + "). Check your connection, or try in the browser."); else { toast("Sync is back."); if (S.ready && !CLOUD.user) render(); } safeRender(); });

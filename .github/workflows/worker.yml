@@ -55,3 +55,19 @@ jobs:
           const line = s => String(s).replace(/\r?\n/g, ' ').slice(0, 500);
           if ('$code' !== '200' || !(o.count > 0)) { console.log('::error title=Archidekt import::HTTP $code ' + line(JSON.stringify(o))); process.exit(1); }
           console.log('::notice title=Archidekt import::Fetched \"' + o.name + '\" with ' + o.count + ' cards; commanders: ' + o.commanders.join(' & ') + '. First lines: ' + line(o.text.split('\n').slice(0, 4).join(' | ')));"
+      - name: Find combos through it
+        run: |
+          url="https://cdl-archidekt.deckledger.workers.dev/combos"
+          body='{"commanders":["Tymna the Weaver"],"main":[{"card":"Thassa\u0027s Oracle","quantity":1},{"card":"Demonic Consultation","quantity":1},{"card":"Sol Ring","quantity":1},{"card":"Basalt Monolith","quantity":1}]}'
+          for i in 1 2 3; do
+            code=$(curl -sS -o combos.json -w '%{http_code}' -X POST -H "Origin: https://hornyhealer.github.io" -H "Content-Type: application/json" --data "$body" "$url" || echo 000)
+            [ "$code" = "200" ] && break; sleep 10
+          done
+          head -c 600 combos.json; echo
+          node -e "
+          const fs = require('fs'); let o = {}; try { o = JSON.parse(fs.readFileSync('combos.json', 'utf8')); } catch {}
+          const line = s => String(s).replace(/\r?\n/g, ' ').slice(0, 600);
+          if ('$code' !== '200' || !Array.isArray(o.included)) { console.log('::error title=Combos::HTTP $code ' + line(JSON.stringify(o))); process.exit(1); }
+          const two = o.included.filter(c => c.twoCard);
+          console.log('::notice title=Combos::' + o.included.length + ' in the deck (' + two.length + ' two-card), ' + o.almostTotal + ' one card away. First: ' + line(o.included.slice(0, 2).map(c => c.cards.join(' + ') + ' => ' + c.produces.slice(0, 2).join(', ')).join(' | ')));
+          if (!o.included.some(c => c.cards.includes('Thassa\'s Oracle'))) { console.log('::error title=Combos::Expected the Thassa\'s Oracle combo'); process.exit(1); }"

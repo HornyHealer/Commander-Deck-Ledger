@@ -598,3 +598,26 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .u-paste[open] summary { margin-bottom: 8px; }
 .u-paste textarea.field { min-height: 160px; }
 .u-note { margin: 8px 0 0; font-size: 12px; }
+
+/* Combos */
+.cb-count { margin-left: 6px; padding: 0 5px; background: var(--acid); color: var(--acid-ink); font-size: 10px; }
+.cb-sec { display: grid; gap: 8px; }
+.cb-sec + .cb-sec { margin-top: 10px; }
+.cb-sec h3 { margin: 0; font-family: var(--wide); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; display: flex; gap: 8px; align-items: baseline; }
+.combos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.combo { display: grid; gap: 6px; padding: 10px 12px; background: var(--bg); outline: 1px solid var(--line); outline-offset: -1px; }
+.cb-cards { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-weight: 600; font-size: 14px; }
+.cb-card em { margin-left: 6px; font: 500 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; font-style: normal; color: var(--warn); }
+.cb-card.miss .cname { color: var(--warn); }
+.cb-card.tmpl { font-weight: 400; color: var(--muted); font-size: 13px; }
+.cb-plus { color: var(--muted); font-family: var(--mono); }
+.cb-two { margin-left: 4px; }
+.cb-prods { display: flex; flex-wrap: wrap; gap: 4px; }
+.cb-prod { font: 500 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; background: var(--acid); color: var(--acid-ink); }
+.cb-prod.more { background: transparent; color: var(--muted); outline: 1px solid var(--line); outline-offset: -1px; }
+.cb-more summary { cursor: pointer; font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: underline; text-underline-offset: 3px; }
+.cb-more ol { margin: 6px 0 0; padding-left: 20px; font-size: 13px; display: grid; gap: 3px; }
+.cb-pre { margin: 6px 0 0; font-size: 13px; }
+.cb-link { justify-self: start; display: inline-flex; gap: 4px; align-items: center; font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.cb-credit { font-size: 12px; }
+.cb-note { margin: 0; font-size: 12px; }

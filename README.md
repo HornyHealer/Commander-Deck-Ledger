@@ -65,6 +65,10 @@ On a deck page, **Update from Archidekt** compares the deck with its Archidekt l
 
 Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen, a card that's in more than one of your decks gets a picker for which deck it comes from.
 
+## Combos
+
+The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card). Each combo shows its cards, what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
+
 ## Bracket and roles
 
 The bracket shown on each deck is the lowest Commander Bracket its cards allow: Game Changers (none in brackets 1–2, up to three in bracket 3), mass land denial (brackets 4–5 only) and extra turns (none in bracket 1). Combos and how fast a deck wins aren't judged, so it's a starting point for the conversation with your table.

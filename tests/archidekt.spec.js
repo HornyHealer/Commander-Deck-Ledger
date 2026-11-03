@@ -143,3 +143,51 @@ test('Update from Archidekt still takes a pasted list', async ({ page }) => {
   await page.click('#u-go');
   await expect(page.locator('.bench .dropbox[data-drop="out"] .brow').first()).toBeVisible();
 });
+
+const COMBOS = {
+  included: [{ id: '1414-2730', cards: ["Thassa's Oracle", 'Demonic Consultation'], templates: [], produces: ['Win the game'], steps: 'Cast Demonic Consultation, naming a card not in your deck.\nCast Thassa\'s Oracle.', prereq: '', mana: '{U}{U}{B}', twoCard: true, popularity: 9 }],
+  almost: [{ id: '2', cards: ['Sol Ring', 'Basalt Monolith', 'Rings of Brighthearth'], templates: [], produces: ['Infinite colorless mana'], steps: '', prereq: '', mana: '', twoCard: false, popularity: 5, missing: ['Rings of Brighthearth'] }],
+  almostTotal: 1,
+};
+
+test('Combos lists the combos in a deck and one card away, and counts two-card combos in the bracket @phone', async ({ page, context }) => {
+  let sent = null;
+  await context.route('https://cdl-archidekt.deckledger.workers.dev/combos', r => { sent = JSON.parse(r.request().postData() || '{}'); r.fulfill({ contentType: 'application/json', body: JSON.stringify(COMBOS) }); });
+  await importBackup(page);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-act="toggle-bracket"]');
+  await expect(page.locator('#deck-bracket')).toContainText("Two-card combos aren't counted yet");
+  await expect(page.locator('[data-act="toggle-bracket"]')).toContainText('1–2');
+  await page.click('[data-act="combos"]');
+  const dlg = page.locator('.dialog');
+  await expect(dlg).toContainText('In this deck 1');
+  await expect(dlg.locator('.combo').first()).toContainText("Thassa's Oracle");
+  await expect(dlg.locator('.combo').first()).toContainText('Win the game');
+  await expect(dlg.locator('.combo').first().locator('.cb-link')).toHaveAttribute('href', 'https://commanderspellbook.com/combo/1414-2730/');
+  await expect(dlg.locator('.cb-card.miss')).toContainText('Rings of Brighthearth');
+  await expect(dlg.locator('.cb-credit a')).toHaveAttribute('href', 'https://commanderspellbook.com');
+  expect(sent.commanders).toEqual(["Captain N'ghathrod"]);
+  expect(sent.main.some(c => c.card === 'Sol Ring')).toBe(true);
+  await page.click('.dialog footer [data-dlg="close"]');
+  // The two-card combo now counts toward the bracket, and the button shows how many combos were found.
+  await expect(page.locator('[data-act="toggle-bracket"]')).toContainText('3');
+  await expect(page.locator('#deck-bracket')).toContainText('1 two-card combo');
+  await expect(page.locator('[data-act="combos"] .cb-count')).toHaveText('1');
+  // Changing the deck makes the old check stale, so it stops counting until checked again.
+  await page.click('[data-cut="Sol Ring"]');
+  if (await page.locator('.sheet-bar').isVisible()) await page.click('.sheet-bar');
+  await page.click('[data-act="commit"]');
+  await expect(page.locator('[data-act="combos"] .cb-count')).toHaveCount(0);
+});
+
+test('Combos shows a clear message and a retry if the service is unreachable', async ({ page, context }) => {
+  let down = true;
+  await context.route('https://cdl-archidekt.deckledger.workers.dev/combos', r => down ? r.abort() : r.fulfill({ contentType: 'application/json', body: JSON.stringify(COMBOS) }));
+  await importBackup(page);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-act="combos"]');
+  await expect(page.locator('.dialog .fetch-msg.bad')).toContainText("Couldn't reach the combo service");
+  down = false;
+  await page.click('[data-act="combos-retry"]');
+  await expect(page.locator('.dialog')).toContainText('In this deck 1');
+});
