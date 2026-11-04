@@ -123,3 +123,16 @@ test('if Firebase keeps failing, "Sync unavailable" can be tapped to try again @
   await chip.click();
   await expect(page.locator('[data-act="signin"]').first()).toBeVisible({ timeout: 10000 });
 });
+
+test('with an App Check key set, App Check starts before sign-in; without one, or if it fails to load, sync still works', async ({ page, context }) => {
+  await context.route('**/js/firebase-config.js', r => r.fulfill({ contentType: 'text/javascript', body: "window.LEDGER_FIREBASE = { apiKey: 'test-key', projectId: 'test-project', authDomain: 'test-project.firebaseapp.com', appCheckKey: 'test-site-key' };" }));
+  await page.goto('/');
+  await expect(page.locator('[data-act="signin"]').first()).toBeVisible();
+  expect(await page.evaluate(() => window.__fakeFirebase.appCheck)).toEqual({ key: 'test-site-key', autoRefresh: true });
+  // App Check's file can't be downloaded: the site signs in and syncs without it.
+  await context.route('https://www.gstatic.com/firebasejs/**/firebase-app-check.js', r => r.abort());
+  await page.reload();
+  await page.locator('[data-act="signin"]').first().click();
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  expect(await page.evaluate(() => window.__fakeFirebase.appCheck)).toBeUndefined();
+});

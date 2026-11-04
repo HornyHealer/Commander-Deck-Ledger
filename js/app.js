@@ -839,8 +839,9 @@ function cloudInit() {
     const reach = tries => Promise.all(files.map(f => fetch(FB + f).then(r => { if (!r.ok) throw new Error("HTTP " + r.status + " for " + f); })))
       .catch(err => tries > 1 ? new Promise(r => setTimeout(r, tries === 3 ? 1000 : 3000)).then(() => reach(tries - 1)) : Promise.reject(err));
     const load = tries => reach(tries).then(() => Promise.all(files.map(f => import(FB + f))));
-    load(3).then(([appM, authM, fsM]) => {
+    load(3).then(async ([appM, authM, fsM]) => {
       const app = appM.getApps && appM.getApps().length ? appM.getApp() : appM.initializeApp(cfg);
+      await startAppCheck(app, cfg); // before sign-in and the database, so their requests carry the check
       const auth = authM.getAuth(app);
       let db;
       try { db = fsM.initializeFirestore(app, { localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); }
@@ -954,6 +955,17 @@ function writePieces(batch, key, parts) {
   return names;
 }
 
+// App Check: proves requests to Firebase come from this site (using reCAPTCHA, invisibly) so the free quota
+// can't be used up by scripts. Only starts when js/firebase-config.js has an appCheckKey. If it can't load,
+// the site carries on without it; Firebase only refuses unchecked requests once enforcement is turned on.
+async function startAppCheck(app, cfg) {
+  if (!cfg.appCheckKey) return;
+  try {
+    const acM = await import(FB + "firebase-app-check.js");
+    acM.initializeAppCheck(app, { provider: new acM.ReCaptchaEnterpriseProvider(cfg.appCheckKey), isTokenAutoRefreshEnabled: true });
+    CLOUD.appCheck = true;
+  } catch (err) { reportError("sync", "App Check didn't start: " + String(err && (err.code || err.message) || err).slice(0, 200), isStandalone() ? "installed app" : "browser"); }
+}
 function stopCloud() {
   CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = [];
   for (const o of PIECES.values()) { try { if (o.unsub) o.unsub(); } catch {} }

@@ -1,7 +1,7 @@
 // Lets the installed app open without a connection. Always tries the network first so updates show up
 // right away, and falls back to the last copy it saved. Firebase's code is kept too; Scryfall and fonts aren't touched.
 const CACHE = "cdl-__VERSION__";
-const FB_FILES = ["firebase-app.js", "firebase-auth.js", "firebase-firestore.js"].map(f => "https://www.gstatic.com/firebasejs/12.19.0/" + f);
+const FB_FILES = ["firebase-app.js", "firebase-app-check.js", "firebase-auth.js", "firebase-firestore.js"].map(f => "https://www.gstatic.com/firebasejs/12.19.0/" + f);
 const SHELL = ["./", "index.html", "css/style.css", "js/app.js", "js/card-rules.js", "js/firebase-config.js", "data/cards.json", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", e => {

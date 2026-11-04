@@ -8,4 +8,6 @@ window.LEDGER_FIREBASE = {
   storageBucket: "deckledgerhost.firebasestorage.app",
   messagingSenderId: "831324727624",
   appId: "1:831324727624:web:c15489786ded7ee8732b7d",
+  // reCAPTCHA key for App Check (public, like the values above). Empty means App Check is off.
+  appCheckKey: "",
 };
