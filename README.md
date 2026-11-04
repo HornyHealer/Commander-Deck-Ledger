@@ -25,7 +25,16 @@ Signed out, each visitor's decks are saved in their own browser. Signed in with 
 
 ## Accounts (Firebase)
 
-Sign-in and sync use Firebase (Google sign-in plus a Firestore database). The settings live in `js/firebase-config.js`; set `window.LEDGER_FIREBASE = null` there to turn accounts off. Those values are public by design. The data is protected by the rules in `firestore.rules`, which must be pasted into the Firebase console (Firestore Database → Rules). Each person's decks are stored at `users/{their id}/decks/{deck id}` and their card bin at `users/{their id}/meta/bin`. The first time someone signs in, the decks saved in that browser move into their account.
+Sign-in and sync use Firebase (Google sign-in plus a Firestore database). The settings live in `js/firebase-config.js`; set `window.LEDGER_FIREBASE = null` there to turn accounts off. Those values are public by design. The data is protected by the rules in `firestore.rules`, which must be pasted into the Firebase console (Firestore Database → Rules). Each person's data is stored under `users/{their id}/`. Firestore allows at most 1 MB per record, so long histories and big collections are saved in pieces:
+
+| Record | Holds |
+|---|---|
+| `decks/{deck id}` | The deck, plus `hist.sigs`: the list of its history pieces in order |
+| `decks/{deck id}/history/c…` | Up to 200 history entries each (fewer if they're large) |
+| `meta/bin` | The card bin's change number and `sigs`, the list of its 10 sections |
+| `bin/c…` | One section of the card bin; a card's section comes from its permanent Scryfall ID |
+
+A piece is named after its contents, so it never changes once saved. A change saves the new pieces and the main record together in one batch, then removes the pieces nothing uses any more, so a typical change costs 2–3 writes. Other devices only show a new version once every piece it lists has arrived. Accounts saved the older all-in-one way are read as before and rewritten in pieces automatically the first time they load. The first time someone signs in, the decks saved in that browser move into their account.
 
 ## Card list updates
 

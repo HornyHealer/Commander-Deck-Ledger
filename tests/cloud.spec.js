@@ -21,6 +21,8 @@ test.beforeEach(async ({ page, context }) => {
 test.afterEach(() => { expect(pageErrors, 'page errors').toEqual([]); });
 
 const fakeStore = page => page.evaluate(() => JSON.parse(localStorage.getItem('fake-fb-store') || '{}'));
+const deckDocs = s => Object.keys(s).filter(k => k.startsWith(STORE) && !k.slice(STORE.length).includes('/'));
+const binCards = s => { const m = s['users/u-test/meta/bin']; return m.fmt === 2 ? [].concat(...m.sigs.map(n => n === '-' ? [] : s['users/u-test/bin/' + n].p)) : m.cards; };
 async function importBackup(page) {
   await page.setInputFiles('#imp-file', BACKUP);
   await page.click('[data-dlg="imp-go"]');
@@ -43,9 +45,9 @@ test('the first sign-in moves browser decks into the account', async ({ page }) 
   await expect(page.locator('.toast')).toContainText('Moved 2 decks');
   await expect(page.locator('#sync-status')).toHaveText('Synced');
   await expect(page.locator('.deckbox')).toHaveCount(2);
-  await expect.poll(async () => Object.keys(await fakeStore(page)).filter(k => k.startsWith(STORE)).length).toBe(2);
+  await expect.poll(async () => deckDocs(await fakeStore(page)).length).toBe(2);
   const store = await fakeStore(page);
-  expect(store['users/u-test/meta/bin'].cards.some(c => c.n === 'Arcane Signet')).toBe(true);
+  expect(binCards(store).some(c => c.n === 'Arcane Signet')).toBe(true);
   expect(await page.evaluate(() => localStorage.getItem('cdl-data-v1'))).toBeNull();
   await expect(page.locator('.site-foot')).toContainText('saved to your account');
 });
@@ -74,7 +76,7 @@ test('a change made on another device shows up', async ({ page }) => {
   await page.goto('/');
   await importBackup(page);
   await page.locator('.signin-note [data-act="signin"]').click();
-  await expect.poll(async () => Object.keys(await fakeStore(page)).filter(k => k.startsWith(STORE)).length).toBe(2);
+  await expect.poll(async () => deckDocs(await fakeStore(page)).length).toBe(2);
   await page.evaluate(path => {
     const g = window.__fakeFirebase; const d = JSON.parse(JSON.stringify(g.store[path]));
     d.name = 'Renamed on my phone'; d.rev = Date.now() + 60000; g.remoteSet(path, d);

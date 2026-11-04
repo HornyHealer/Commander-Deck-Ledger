@@ -8,6 +8,16 @@ export function collection(db, ...parts) { return { kind: 'col', path: parts.joi
 const later = fn => new Promise(res => setTimeout(() => { fn(); res(); }, 20));
 export function setDoc(ref, data) { return later(() => { g.store[ref.path] = clone(data); g.save(); g.notify(); }); }
 export function deleteDoc(ref) { return later(() => { delete g.store[ref.path]; g.save(); g.notify(); }); }
+// Several writes that land together, as one change.
+export function writeBatch() {
+  const ops = [];
+  const batch = {
+    set(ref, data) { ops.push([ref.path, clone(data)]); return batch; },
+    delete(ref) { ops.push([ref.path, undefined]); return batch; },
+    commit() { g.writes = (g.writes || 0) + ops.length; return later(() => { for (const [p, v] of ops) { if (v === undefined) delete g.store[p]; else g.store[p] = v; } g.save(); g.notify(); }); },
+  };
+  return batch;
+}
 const meta = { fromCache: false, hasPendingWrites: false };
 const docSnap = (id, data) => ({ id, exists: () => data !== undefined, data: () => (data === undefined ? undefined : clone(data)), metadata: meta });
 export function onSnapshot(ref, opts, next) {

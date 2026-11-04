@@ -850,7 +850,123 @@ function cloudInit() {
     }).catch(err => { CLOUD.failed = true; CLOUD.err = String(err && (err.code || err.message) || err || "unknown error").slice(0, 200); reportError("sync", "Firebase didn't load: " + CLOUD.err, isStandalone() ? "installed app" : "browser"); done(); safeRender(); });
   });
 }
-function stopCloud() { CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = []; synced.clear(); syncedBinRev = 0; CLOUD.loaded = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = false; }
+// ---- Saving to the account in pieces ----
+// Firestore holds at most 1 MB per record, so a deck's history and the card bin are saved as separate
+// "piece" records instead of inside one big one:
+//   users/{uid}/decks/{id}              the deck itself, with a list of its history pieces (hist.sigs)
+//   users/{uid}/decks/{id}/history/c…   up to 200 history entries each
+//   users/{uid}/meta/bin                the bin's change number and its list of pieces (sigs)
+//   users/{uid}/bin/c…                  one of 10 sections of the bin, split by each card's permanent ID
+// A piece is named after its contents, so a piece never changes once saved; a change saves the new pieces and
+// the main record in one go, then removes pieces nothing uses any more. Another device only takes the new
+// version once every piece it lists has arrived, so it never shows half a change.
+const HIST_PIECE = 200, PIECE_CHARS = 300000, BIN_PARTS = 10;
+function strHash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+// The same text for the same contents whatever order Firestore hands the fields back in.
+function stableStr(v) {
+  if (Array.isArray(v)) return "[" + v.map(x => x === undefined ? "null" : stableStr(x)).join(",") + "]";
+  if (v && typeof v === "object") return "{" + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ":" + stableStr(v[k])).join(",") + "}";
+  return JSON.stringify(v);
+}
+const pieceName = part => { const s = stableStr(part); return "c" + strHash(s).toString(36) + "-" + s.length.toString(36); };
+function packHistory(log) {
+  const out = []; let cur = [], size = 0;
+  for (const e of log) {
+    const n = JSON.stringify(e).length;
+    if (cur.length && (cur.length >= HIST_PIECE || size + n > PIECE_CHARS)) { out.push(cur); cur = []; size = 0; }
+    cur.push(e); size += n;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+const binPart = c => strHash(String(c.i || c.n || "")) % BIN_PARTS;
+function splitBin(cards) { const parts = Array.from({ length: BIN_PARTS }, () => []); for (const c of cards) parts[binPart(c)].push(c); return parts; }
+
+const PIECES = new Map(); // "bin" or "d:<deck id>" -> { docs: name -> contents, wait, mine, seen, unsub }
+function pieceSet(key) { let o = PIECES.get(key); if (!o) PIECES.set(key, o = { docs: new Map(), wait: null, mine: new Map(), seen: false, unsub: null, dead: false }); return o; }
+function piecePath(key) { const uid = CLOUD.user.uid; return key === "bin" ? ["users", uid, "bin"] : ["users", uid, "decks", key.slice(2), "history"]; }
+function watchPieces(key) {
+  const o = pieceSet(key); if (o.unsub || !CLOUD.user) return o;
+  const { fsM, db } = CLOUD.api;
+  o.unsub = fsM.onSnapshot(fsM.collection(db, ...piecePath(key)), snap => {
+    for (const ch of snap.docChanges()) {
+      if (ch.type === "removed") { o.docs.delete(ch.doc.id); continue; }
+      const v = ch.doc.data(); if (v && Array.isArray(v.p)) o.docs.set(ch.doc.id, v.p);
+    }
+    o.seen = true;
+    if (o.dead) return clearPieces(key);
+    // Another device removed a piece this one still uses (both changed the same thing at once): put it back.
+    if (!snap.metadata.hasPendingWrites && !o.wait && [...o.mine.keys()].some(n => !o.docs.has(n))) {
+      const b = fsM.writeBatch(db);
+      for (const [n, p] of o.mine) if (!o.docs.has(n)) { b.set(fsM.doc(db, ...piecePath(key), n), forCloud({ p })); o.docs.set(n, p); }
+      cloudWrite(b.commit());
+    }
+    tryPieces(key);
+  }, cloudError);
+  return o;
+}
+// Removes every piece of a deleted deck, including ones that show up once the listener has caught up.
+function clearPieces(key) {
+  const o = PIECES.get(key); if (!o || !CLOUD.user) return;
+  o.dead = true; o.wait = null; o.mine = new Map();
+  if (o.docs.size) {
+    const { fsM, db } = CLOUD.api; const b = fsM.writeBatch(db);
+    for (const n of o.docs.keys()) b.delete(fsM.doc(db, ...piecePath(key), n));
+    o.docs.clear(); cloudWrite(b.commit());
+  }
+  if (o.seen) { if (o.unsub) o.unsub(); PIECES.delete(key); }
+}
+function dropPieces(key) { const o = PIECES.get(key); if (!o || o.dead) return; if (o.unsub) o.unsub(); PIECES.delete(key); }
+// Waits for every listed piece, then hands their contents over in order.
+function waitPieces(key, names, apply) { const o = watchPieces(key); o.wait = { names, apply }; tryPieces(key); }
+function tryPieces(key) {
+  const o = PIECES.get(key); if (!o || !o.wait) return;
+  const { names, apply } = o.wait;
+  if (!names.every(n => n === "-" || o.docs.has(n))) return;
+  o.wait = null;
+  const parts = names.map(n => n === "-" ? [] : clone(o.docs.get(n)));
+  if (apply(parts) !== false) o.mine = new Map(names.filter(n => n !== "-").map(n => [n, o.docs.get(n)]));
+  if (!CLOUD.loaded && CLOUD.decksSeen && !decksWaiting()) CLOUD.loaded = true;
+  maybeMigrate(); safeRender();
+}
+function decksWaiting() { for (const [k, o] of PIECES) if (k !== "bin" && o.wait) return true; return false; }
+// Adds the pieces a new version needs to a batch of writes and removes the ones it no longer uses.
+function writePieces(batch, key, parts) {
+  const { fsM, db } = CLOUD.api; const o = watchPieces(key); const path = piecePath(key);
+  const names = parts.map(p => p.length ? pieceName(p) : "-");
+  const need = new Map();
+  parts.forEach((p, k) => {
+    const n = names[k]; if (!p.length || need.has(n)) return;
+    if (!o.docs.has(n)) { const v = forCloud({ p }); batch.set(fsM.doc(db, ...path, n), v); o.docs.set(n, v.p); } // a copy, so later edits don't change it
+    need.set(n, o.docs.get(n));
+  });
+  if (o.seen) for (const n of [...o.docs.keys()]) if (!need.has(n)) { batch.delete(fsM.doc(db, ...path, n)); o.docs.delete(n); }
+  o.mine = need; o.wait = null;
+  return names;
+}
+
+function stopCloud() {
+  CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = [];
+  for (const o of PIECES.values()) { try { if (o.unsub) o.unsub(); } catch {} }
+  PIECES.clear(); oldFormat.clear(); synced.clear(); syncedBinRev = 0;
+  CLOUD.loaded = CLOUD.decksSeen = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = CLOUD.binTaken = false;
+}
+const oldFormat = new Set(); // records still saved the old, all-in-one way: rewritten once the server has answered
+function takeDeck(id, body, resave) {
+  const d = normalizeDeck(body);
+  syncDeckIds(d); S.decks.set(id, d); synced.set(id, resave ? -1 : d.rev || 0);
+  if (convertUnowned(d)) { touch(d); persist(); } else if (resave) persist();
+}
+function takeBin(cards, rev, resave) {
+  S.loose = { cards, rev }; syncBinIds(); syncedBinRev = resave ? -1 : rev; CLOUD.binTaken = true;
+  if (resave) persist();
+}
 function onUser(user) {
   CLOUD.authReady = true;
   if (!user) {
@@ -866,28 +982,58 @@ function onUser(user) {
   S.decks = new Map(); S.loose = { cards: [] };
   const { fsM, db } = CLOUD.api; const uid = user.uid;
   CLOUD.binRef = fsM.doc(db, "users", uid, "meta", "bin");
+  watchPieces("bin");
   CLOUD.unsubs.push(fsM.onSnapshot(fsM.collection(db, "users", uid, "decks"), { includeMetadataChanges: true }, snap => {
     for (const ch of snap.docChanges()) {
       const id = ch.doc.id;
-      if (ch.type === "removed") { if (!ch.doc.metadata.hasPendingWrites) { S.decks.delete(id); synced.delete(id); } continue; }
+      if (ch.type === "removed") { if (!ch.doc.metadata.hasPendingWrites) { S.decks.delete(id); synced.delete(id); oldFormat.delete(id); dropPieces("d:" + id); } continue; }
       if (ch.doc.metadata.hasPendingWrites) continue; // our own change on its way to the server
       const data = ch.doc.data(); if (!data || !Array.isArray(data.cur)) continue;
       const local = S.decks.get(id);
-      if (local && (local.rev || 0) > (data.rev || 0)) continue;
-      const d = normalizeDeck(Object.assign({}, data, { id }));
-      syncDeckIds(d); S.decks.set(id, d); synced.set(id, d.rev || 0);
-      if (convertUnowned(d)) { touch(d); persist(); }
+      if (local && (local.rev || 0) >= (data.rev || 0)) continue;
+      if (data.fmt === 2 && data.hist && Array.isArray(data.hist.sigs)) {
+        oldFormat.delete(id);
+        // An older copy of the site still open somewhere saves new history entries in the deck itself.
+        const extra = Array.isArray(data.log) ? data.log : [];
+        waitPieces("d:" + id, data.hist.sigs, parts => {
+          const now = S.decks.get(id); if (now && (now.rev || 0) >= (data.rev || 0)) return false;
+          const log = [].concat(...parts); const have = new Set(log.map(e => e && e.id));
+          for (const e of extra) if (e && !have.has(e.id)) log.push(e);
+          const body = Object.assign({}, data, { id, log }); delete body.fmt; delete body.hist;
+          takeDeck(id, body, extra.length > 0);
+        });
+      } else {
+        oldFormat.add(id); watchPieces("d:" + id);
+        takeDeck(id, Object.assign({}, data, { id }), false);
+      }
     }
-    CLOUD.loaded = true;
-    if (!snap.metadata.fromCache) CLOUD.serverDecks = true;
+    CLOUD.decksSeen = true;
+    if (!CLOUD.loaded && !decksWaiting()) CLOUD.loaded = true;
+    if (!CLOUD.loaded) setTimeout(() => { if (CLOUD.user && !CLOUD.loaded) { CLOUD.loaded = true; safeRender(); } }, 8000);
+    if (!snap.metadata.fromCache) {
+      CLOUD.serverDecks = true;
+      if (oldFormat.size) { for (const id of oldFormat) if (S.decks.has(id)) synced.set(id, -1); oldFormat.clear(); persist(); }
+    }
     maybeMigrate(); safeRender();
   }, cloudError));
   CLOUD.unsubs.push(fsM.onSnapshot(CLOUD.binRef, { includeMetadataChanges: true }, snap => {
     if (!snap.metadata.hasPendingWrites) {
       const data = snap.exists() ? snap.data() : null;
-      if (data && Array.isArray(data.cards) && (data.rev || 0) >= (S.loose.rev || 0)) { S.loose = data; syncBinIds(); syncedBinRev = data.rev || 0; }
+      const rev = data && data.rev || 0;
+      const newer = !CLOUD.binTaken || rev > (S.loose.rev || 0);
+      if (data && newer && data.fmt === 2 && Array.isArray(data.sigs)) {
+        CLOUD.binOld = false;
+        const extra = Array.isArray(data.cards) ? data.cards : []; // added by an older copy of the site
+        waitPieces("bin", data.sigs, parts => {
+          if (CLOUD.binTaken && rev <= (S.loose.rev || 0)) return false;
+          takeBin([].concat(...parts, extra), rev, extra.length > 0);
+        });
+      } else if (data && newer && Array.isArray(data.cards)) { CLOUD.binOld = true; takeBin(data.cards, rev, false); }
     }
-    if (!snap.metadata.fromCache) CLOUD.serverBin = true;
+    if (!snap.metadata.fromCache) {
+      CLOUD.serverBin = true;
+      if (CLOUD.binOld) { CLOUD.binOld = false; syncedBinRev = -1; persist(); }
+    }
     maybeMigrate(); safeRender();
   }, cloudError));
   if (S.ready) render();
@@ -900,6 +1046,8 @@ function cloudError(err) {
 // The first time someone signs in on a browser, decks saved there move into their account.
 function maybeMigrate() {
   if (CLOUD.migrated || !CLOUD.serverDecks || !CLOUD.serverBin) return;
+  // Wait until the account's decks and bin have fully arrived, so nothing is merged into half a copy.
+  if (decksWaiting() || (PIECES.get("bin") && PIECES.get("bin").wait)) return;
   CLOUD.migrated = true;
   const local = readLocalStore();
   const decks = local && Array.isArray(local.decks) ? local.decks.filter(d => d && d.id && Array.isArray(d.cur)) : [];
@@ -932,10 +1080,25 @@ function cloudFlush() {
   for (const d of S.decks.values()) {
     if (synced.has(d.id) && synced.get(d.id) === (d.rev || 0)) continue;
     synced.set(d.id, d.rev || 0);
-    cloudWrite(fsM.setDoc(fsM.doc(db, "users", uid, "decks", d.id), forCloud(d)));
+    // The deck and its new history pieces are saved together, so other devices never see one without the other.
+    const b = fsM.writeBatch(db);
+    const sigs = writePieces(b, "d:" + d.id, packHistory(d.log || []));
+    const body = Object.assign({}, d, { fmt: 2, hist: { sigs } }); delete body.log;
+    b.set(fsM.doc(db, "users", uid, "decks", d.id), forCloud(body));
+    cloudWrite(b.commit());
   }
-  for (const id of [...synced.keys()]) if (!S.decks.has(id)) { synced.delete(id); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id))); }
-  if ((S.loose.rev || 0) !== syncedBinRev) { syncedBinRev = S.loose.rev || 0; cloudWrite(fsM.setDoc(CLOUD.binRef, forCloud(S.loose))); }
+  for (const id of [...synced.keys()]) if (!S.decks.has(id)) {
+    synced.delete(id); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id)));
+    watchPieces("d:" + id); clearPieces("d:" + id);
+  }
+  if ((S.loose.rev || 0) !== syncedBinRev) {
+    syncedBinRev = S.loose.rev || 0; CLOUD.binTaken = true;
+    const b = fsM.writeBatch(db);
+    const sigs = writePieces(b, "bin", splitBin(S.loose.cards || []));
+    // "cards" stays as an empty list so an older copy of the site still open somewhere doesn't mistake the bin for missing.
+    b.set(CLOUD.binRef, { rev: S.loose.rev || 0, fmt: 2, sigs, cards: [] });
+    cloudWrite(b.commit());
+  }
 }
 function syncText() {
   if (!CLOUD.pending) return "Synced";
