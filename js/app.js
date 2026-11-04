@@ -1364,7 +1364,7 @@ function render() {
   const viewKey = S.view + (S.view === "deck" ? ":" + S.deckId : "");
   const glitch = S.ready && lastViewKey !== null && viewKey !== lastViewKey && !reduceMotion();
   lastViewKey = S.ready ? viewKey : null;
-  html += `<div class="view${glitch ? " vfx-in" : ""}">`;
+  html += `<div class="view">`;
   if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
   else if (S.view === "check") html += renderCheck();
@@ -1466,10 +1466,12 @@ function playGlitch(target, mode = "view") {
   // never delays the first response to a tap.
   const gw = document.createElement("div"); gw.className = "vfx-ghosts " + tag; gw.setAttribute("aria-hidden", "true"); gw.inert = true; parts.push(gw);
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (!target.isConnected) return;
+    // The page may have been redrawn since (say, card details arriving): copy what's there now.
+    if (!target.isConnected) target = pop ? $(".scrim .dialog") : $(".view");
+    if (!target) return;
     Object.assign(gw.style, { top: r.top + "px", left: r.left + "px", width: r.width + "px", height: (bottom - r.top) + "px" });
     [["r", 1], ["c", -1]].forEach(([c, dir], k) => {
-      const g = target.cloneNode(true); g.classList.remove("vfx-in"); g.classList.add("vfx-ghost", "g-" + c);
+      const g = target.cloneNode(true); g.classList.add("vfx-ghost", "g-" + c);
       // Only what's on screen matters: drop the long lists' off-screen rows so the copies stay cheap.
       for (const sel of [".row", ".entry", ".deckbox", ".swap", ".cb-card"]) [...g.querySelectorAll(sel)].slice(sel === ".deckbox" ? 12 : 24).forEach(e => e.remove());
       g.querySelectorAll("[id]").forEach(e => e.removeAttribute("id"));

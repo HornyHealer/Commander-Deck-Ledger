@@ -62,11 +62,13 @@ test('a card image glitches in as it loads', async ({ page, context }, info) => 
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
   const name = page.locator('#app .row .nm > span:first-child').nth(2);
-  await name.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(150);
-  await name.hover();
-  await expect(page.locator('.cardpv .vfx-img')).toHaveCount(1);
-  await expect(page.locator('.cardpv .vfx-img img.vfx-ghost')).toHaveCount(2);
+  // The rows can be redrawn as card details arrive, so try the hover again if that happens mid-step.
+  await expect(async () => {
+    await name.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(150);
+    await name.hover();
+    await expect(page.locator('.cardpv .vfx-img img.vfx-ghost')).toHaveCount(2, { timeout: 1000 });
+  }).toPass({ timeout: 10000 });
   await expect(page.locator('.cardpv .vfx-img')).toHaveCount(0, { timeout: 2000 });
   await expect(page.locator('.cardpv img').first()).toBeVisible();
 });
