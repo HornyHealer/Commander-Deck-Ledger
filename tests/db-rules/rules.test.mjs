@@ -1,6 +1,6 @@
 // Checks firestore.rules against Firebase's own rules emulator. Runs on GitHub (the "rules" job in
 // .github/workflows/test-and-deploy.yml) with:
-//   npx firebase-tools emulators:exec --only firestore --project demo-cdl "node --test tests/db-rules/"
+//   npx firebase-tools emulators:exec --only firestore --project demo-cdl "node --test tests/db-rules/rules.test.mjs"
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';

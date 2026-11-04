@@ -88,7 +88,7 @@ jobs:
       - name: Install the rules testing tools
         run: npm install --no-save --no-package-lock firebase-tools@15.34.2 @firebase/rules-unit-testing@6.0.0 firebase@13.2.0
       - name: Test the database rules
-        run: npx firebase emulators:exec --only firestore --project demo-cdl "node --test tests/db-rules/"
+        run: npx firebase emulators:exec --only firestore --project demo-cdl "node --test tests/db-rules/rules.test.mjs"
 
   deploy:
     needs: [test, rules]
