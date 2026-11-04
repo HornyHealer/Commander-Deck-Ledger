@@ -637,28 +637,37 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .cb-plus { margin-top: 1.2em; }
 }
 
-/* ---------- View-switch glitch (drawn by playGlitch in js/app.js) ---------- */
+/* ---------- Glitch transitions (drawn by playGlitch and glitchImage in js/app.js) ---------- */
 .view { position: relative; }
-.vfx-ghosts { position: absolute; z-index: 44; pointer-events: none; overflow: hidden; }
+.vfx-ghosts { position: fixed; z-index: 44; pointer-events: none; overflow: hidden; }
+.vfx-ghosts.p { z-index: 53; }
 .vfx-ghost { position: absolute; inset: 0; overflow: hidden; mix-blend-mode: screen; will-change: transform, clip-path; }
+.vfx-ghosts.p .vfx-ghost { margin: 0; width: 100%; max-height: none; }
 .vfx-ghost.g-r { filter: url(#vfx-r); }
 .vfx-ghost.g-c { filter: url(#vfx-c); }
 :root:not([data-theme="dark"]) .vfx-ghost { mix-blend-mode: multiply; opacity: .7; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .vfx-ghost { mix-blend-mode: screen; opacity: 1; } }
-.vfx { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; pointer-events: none; overflow: hidden; display: grid;
+.vfx { position: fixed; z-index: 45; pointer-events: none; overflow: hidden; display: grid;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(8 8 7 / .18) 2px 3px);
   animation: vfx-lines .42s linear both; }
+.vfx.p { z-index: 52; animation-duration: .36s; }
 @keyframes vfx-lines { 0% { opacity: 1; } 75% { opacity: .8; } 100% { opacity: 0; } }
-.vfx > i { display: block; min-width: 0; min-height: 0; }
-.vfx > i.b { background: var(--bg); animation: vfx-block 1ms steps(1, end) both; }
-.vfx > i.b.a { background: repeating-linear-gradient(135deg, var(--acid) 0 3px, transparent 3px 6px), var(--bg); }
-.vfx > i.b.c { background: repeating-linear-gradient(135deg, var(--cyan) 0 3px, transparent 3px 6px), var(--bg); }
-.vfx > i.b.h { background: repeating-linear-gradient(135deg, var(--hot) 0 3px, transparent 3px 6px), var(--bg); }
+.vfx > i, .vfx-blocks > i { display: block; min-width: 0; min-height: 0; }
+.vfx > i.b, .vfx-blocks > i.b { background: var(--bg); animation: vfx-block 1ms steps(1, end) both; }
+.vfx > i.b.a, .vfx-blocks > i.b.a { background: repeating-linear-gradient(135deg, var(--acid) 0 3px, transparent 3px 6px), var(--bg); }
+.vfx > i.b.c, .vfx-blocks > i.b.c { background: repeating-linear-gradient(135deg, var(--cyan) 0 3px, transparent 3px 6px), var(--bg); }
+.vfx > i.b.h, .vfx-blocks > i.b.h { background: repeating-linear-gradient(135deg, var(--hot) 0 3px, transparent 3px 6px), var(--bg); }
 @keyframes vfx-block { to { visibility: hidden; } }
-.vfx .ln { position: absolute; left: 0; right: 0; opacity: 0; animation: vfx-line .12s steps(1, end) both; }
-.vfx .ln.a { background: var(--acid); } .vfx .ln.c { background: var(--cyan); } .vfx .ln.h { background: var(--hot); } .vfx .ln.w { background: var(--ink); }
+.vfx .ln, .vfx-blocks .ln { position: absolute; left: 0; right: 0; opacity: 0; animation: vfx-line .12s steps(1, end) both; }
+.ln.a { background: var(--acid); } .ln.c { background: var(--cyan); } .ln.h { background: var(--hot); } .ln.w { background: var(--ink); }
 @keyframes vfx-line { 0% { opacity: 1; transform: scaleX(1); } 40% { opacity: 0; } 60% { opacity: .9; transform: translateX(-12%) scaleX(.7); } 100% { opacity: 0; } }
 .vfx-bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--acid);
   box-shadow: 0 0 0 1px var(--ink), 0 0 18px 2px var(--acid); animation: vfx-sweep .4s cubic-bezier(.3, 0, .2, 1) both; }
 @keyframes vfx-sweep { from { transform: translateY(-4px); } to { transform: translateY(100vh); } }
-@media (prefers-reduced-motion: reduce) { .vfx, .vfx-ghosts { display: none; } }
+/* Card images: the same pieces, sized to the picture. */
+.cb-card, .print { position: relative; }
+.artrow { position: relative; }
+.vfx-img { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.vfx-img .vfx-blocks { position: absolute; inset: 0; display: grid; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(8 8 7 / .2) 2px 3px); animation: vfx-lines .32s linear both; }
+.vfx-img img.vfx-ghost { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (prefers-reduced-motion: reduce) { .vfx, .vfx-ghosts, .vfx-img { display: none; } }

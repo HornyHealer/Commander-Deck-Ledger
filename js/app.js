@@ -1373,17 +1373,19 @@ function render() {
   else html += renderLibrary();
   html += `</div><footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
-  if (glitch) playGlitch();
+  if (glitch) queueMicrotask(() => playGlitch($(".view"))); // after go() has scrolled back to the top
   if (S.dialog) renderDialog();
 }
-// ---------- view-switch glitch (Marathon-style) ----------
-// About 0.4 s: the view area starts as blocks that drop out in random order (like the Marathon loading
-// moth), while red and cyan copies of the new view, cut into horizontal slices and shifted sideways, slide
-// together and lock onto the real view, with a few colored scan lines. Copies are look-only (inert,
-// no ids) and everything is removed afterwards. Skipped when the device asks for reduced motion.
-let lastViewKey = null;
+// ---------- glitch transitions (Marathon-style) ----------
+// Views, popups and card images arrive as fragments: blocks that drop out in random order (like the Marathon
+// loading moth), red and cyan copies cut into horizontal slices that slide together and lock onto the real
+// thing, and a few colored scan lines. Copies are look-only (inert, no ids) and removed afterwards.
+// Skipped entirely when the device asks for reduced motion.
+let lastViewKey = null, lastDialogKey = null;
 const reduceMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
-const GLITCH_MS = 400;
+const GLITCH_MS = 400, GLITCH_POP_MS = 340, GLITCH_IMG_MS = 300;
+const vfxRnd = (a, b) => a + Math.random() * (b - a);
+const VFX_STEP = { easing: "steps(1, end)" };
 function vfxFilters() {
   if (document.getElementById("vfx-defs")) return;
   const NS = "http://www.w3.org/2000/svg"; const svg = document.createElementNS(NS, "svg");
@@ -1404,61 +1406,103 @@ function bandsClip(n, cover) {
   }
   return `polygon(${pts.join(",")})`;
 }
-function playGlitch() {
-  document.querySelectorAll(".vfx, .vfx-ghosts").forEach(el => el.remove());
-  const view = document.querySelector(".view"); if (!view) return;
-  vfxFilters();
-  const r = view.getBoundingClientRect(); const vh = Math.max(0, innerHeight - Math.max(0, r.top));
-  const rnd = (a, b) => a + Math.random() * (b - a);
-  const step = { easing: "steps(1, end)" };
-  const parts = [];
-  // 1. The real view: hidden at first, then in torn bands that jitter sideways, then whole.
-  const vf = [{ offset: 0, opacity: 0, ...step }];
+// Steps for a sliced copy: shifted up to `reach` px (mostly in `dir`), closing in, then gone.
+function ghostFrames(dir, reach) {
+  const n = 10, frames = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, amp = Math.pow(1 - t, 1.4) * vfxRnd(reach * .35, reach);
+    frames.push({ offset: t * .82, opacity: 1, transform: `translateX(${(dir * amp * (Math.random() < .25 ? -1 : 1)).toFixed(1)}px)`, clipPath: bandsClip(Math.round(vfxRnd(4, 9)), .4 + t * .5), ...VFX_STEP });
+  }
+  frames.push({ offset: 1, opacity: 0, transform: "translateX(0)", clipPath: "inset(0)" });
+  return frames;
+}
+// Steps for the real thing: hidden, then torn bands that jitter sideways, then whole.
+function realFrames(shift, jitter, split) {
+  const f = [{ offset: 0, opacity: 0, ...VFX_STEP }];
   for (let i = 1; i <= 7; i++) {
-    const t = i / 8;
-    vf.push({ offset: .15 + t * .7, opacity: 1, left: `${(rnd(-1, 1) * 30 * (1 - t)).toFixed(1)}px`, clipPath: bandsClip(Math.round(rnd(3, 6)), .5 + t * .5), textShadow: `${(3 * (1 - t) + 1).toFixed(1)}px 0 var(--hot), ${(-3 * (1 - t) - 1).toFixed(1)}px 0 var(--cyan)`, ...step });
+    const t = i / 8, x = (vfxRnd(-1, 1) * jitter * (1 - t)).toFixed(1);
+    const k = { offset: .15 + t * .7, opacity: 1, clipPath: bandsClip(Math.round(vfxRnd(3, 6)), .5 + t * .5), ...VFX_STEP };
+    if (shift === "left") k.left = x + "px"; else k.transform = `translateX(${x}px)`;
+    if (split) k.textShadow = `${(3 * (1 - t) + 1).toFixed(1)}px 0 var(--hot), ${(-3 * (1 - t) - 1).toFixed(1)}px 0 var(--cyan)`;
+    f.push(k);
   }
-  vf.push({ offset: 1, opacity: 1, left: "0px", clipPath: "inset(0 0 0 0)", textShadow: "none" });
-  view.animate(vf, { duration: GLITCH_MS });
-  // 2. Blocks over the view area that drop out in random order, a few hatched in the palette, plus scan lines.
-  const fx = document.createElement("div"); fx.className = "vfx"; fx.setAttribute("aria-hidden", "true");
-  fx.style.top = Math.max(0, r.top) + "px";
-  const cols = Math.max(8, Math.round(innerWidth / 64)), rows = Math.max(6, Math.round(vh / 36));
-  fx.style.gridTemplateColumns = `repeat(${cols}, 1fr)`; fx.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-  const hues = ["a", "c", "h", "a", "c"]; let tiles = "";
+  const end = { offset: 1, opacity: 1, clipPath: "inset(0 0 0 0)" };
+  if (shift === "left") end.left = "0px"; else end.transform = "translateX(0)";
+  if (split) end.textShadow = "none";
+  f.push(end);
+  return f;
+}
+// Blocks that drop out in random order (some hatched in the palette), plus scan lines.
+function blocksHtml(cols, rows, dur, lines) {
+  const hues = ["a", "c", "h", "a", "c"]; let h = "";
   for (let k = 0; k < cols * rows; k++) {
-    const roll = Math.random(); if (roll < .2) { tiles += "<i></i>"; continue; } // already open
+    const roll = Math.random(); if (roll < .2) { h += "<i></i>"; continue; } // already open
     const cls = roll > .82 ? " " + hues[Math.floor(Math.random() * hues.length)] : "";
-    tiles += `<i class="b${cls}" style="animation-delay:${Math.round(Math.random() * Math.random() * GLITCH_MS * .55)}ms"></i>`;
+    h += `<i class="b${cls}" style="animation-delay:${Math.round(Math.random() * Math.random() * dur * .55)}ms"></i>`;
   }
-  let lines = "";
-  for (let k = 0; k < 9; k++) lines += `<b class="ln ${["a", "c", "h", "w"][k % 4]}" style="top:${rnd(0, 100).toFixed(1)}%;height:${Math.ceil(rnd(1, 3))}px;animation-delay:${Math.round(rnd(0, GLITCH_MS * .6))}ms"></b>`;
-  fx.innerHTML = tiles + lines + '<b class="vfx-bar"></b>';
+  for (let k = 0; k < lines; k++) h += `<b class="ln ${["a", "c", "h", "w"][k % 4]}" style="top:${vfxRnd(0, 100).toFixed(1)}%;height:${Math.ceil(vfxRnd(1, 3))}px;animation-delay:${Math.round(vfxRnd(0, dur * .6))}ms"></b>`;
+  return h;
+}
+// Plays the glitch over a whole view (mode "view") or a popup (mode "pop").
+function playGlitch(target, mode = "view") {
+  const pop = mode === "pop", tag = pop ? "p" : "v", dur = pop ? GLITCH_POP_MS : GLITCH_MS;
+  document.querySelectorAll(`.vfx.${tag}, .vfx-ghosts.${tag}`).forEach(el => el.remove());
+  if (!target || !target.isConnected) return;
+  vfxFilters();
+  const r = target.getBoundingClientRect();
+  const top = Math.max(0, r.top), bottom = pop ? Math.min(innerHeight, r.bottom) : innerHeight;
+  const vh = Math.max(0, bottom - top); if (!vh) return;
+  const parts = [];
+  // 1. The real thing.
+  target.animate(realFrames(pop ? "transform" : "left", pop ? 18 : 30, true), { duration: dur });
+  // 2. Blocks over its area, with scan lines (and the sweeping bar for whole views).
+  const fx = document.createElement("div"); fx.className = "vfx " + tag; fx.setAttribute("aria-hidden", "true");
+  const cols = Math.max(pop ? 6 : 8, Math.round((pop ? r.width : innerWidth) / (pop ? 52 : 64))), rows = Math.max(5, Math.round(vh / 36));
+  Object.assign(fx.style, { top: top + "px", height: vh + "px", left: pop ? r.left + "px" : "0px", width: pop ? r.width + "px" : "100%",
+    gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` });
+  fx.innerHTML = blocksHtml(cols, rows, dur, pop ? 6 : 9) + (pop ? "" : '<b class="vfx-bar"></b>');
   document.body.appendChild(fx); parts.push(fx);
-  // 3. Sliced red and cyan copies, shifted sideways and closing in on the real view. Built one frame later,
-  // once the block cover is on screen, so copying the view never delays the tap's first response.
-  const gw = document.createElement("div"); gw.className = "vfx-ghosts"; gw.setAttribute("aria-hidden", "true"); gw.inert = true; parts.push(gw);
+  // 3. Sliced red and cyan copies closing in. Built one frame later, once the blocks are on screen, so copying
+  // never delays the first response to a tap.
+  const gw = document.createElement("div"); gw.className = "vfx-ghosts " + tag; gw.setAttribute("aria-hidden", "true"); gw.inert = true; parts.push(gw);
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (!view.isConnected) return;
-    Object.assign(gw.style, { top: (r.top + scrollY) + "px", left: (r.left + scrollX) + "px", width: r.width + "px", height: vh + "px" });
+    if (!target.isConnected) return;
+    Object.assign(gw.style, { top: r.top + "px", left: r.left + "px", width: r.width + "px", height: (bottom - r.top) + "px" });
     [["r", 1], ["c", -1]].forEach(([c, dir], k) => {
-      const g = view.cloneNode(true); g.classList.remove("vfx-in"); g.classList.add("vfx-ghost", "g-" + c);
+      const g = target.cloneNode(true); g.classList.remove("vfx-in"); g.classList.add("vfx-ghost", "g-" + c);
       // Only what's on screen matters: drop the long lists' off-screen rows so the copies stay cheap.
-      for (const sel of [".row", ".entry", ".deckbox", ".swap"]) [...g.querySelectorAll(sel)].slice(sel === ".deckbox" ? 12 : 24).forEach(e => e.remove());
+      for (const sel of [".row", ".entry", ".deckbox", ".swap", ".cb-card"]) [...g.querySelectorAll(sel)].slice(sel === ".deckbox" ? 12 : 24).forEach(e => e.remove());
       g.querySelectorAll("[id]").forEach(e => e.removeAttribute("id"));
-      const n = 10, frames = [];
-      for (let i = 0; i <= n; i++) {
-        const t = i / n, amp = Math.pow(1 - t, 1.4) * rnd(40, 110);
-        frames.push({ offset: t * .82, opacity: 1, transform: `translateX(${(dir * amp * (Math.random() < .25 ? -1 : 1)).toFixed(1)}px)`, clipPath: bandsClip(Math.round(rnd(4, 9)), .4 + t * .5), ...step });
-      }
-      frames.push({ offset: 1, opacity: 0, transform: "translateX(0)", clipPath: "inset(0)" });
-      g.animate(frames, { duration: GLITCH_MS * rnd(.8, .92), delay: k * 12, fill: "both" });
+      g.animate(ghostFrames(dir, pop ? 70 : 110), { duration: dur * vfxRnd(.8, .92), delay: k * 12, fill: "both" });
       gw.appendChild(g);
     });
     document.body.appendChild(gw);
   }));
-  setTimeout(() => parts.forEach(el => el.remove()), GLITCH_MS + 120);
+  setTimeout(() => parts.forEach(el => el.remove()), dur + 120);
 }
+// A smaller version for a card image as it finishes loading.
+function glitchImage(img) {
+  if (reduceMotion() || !img.isConnected || !img.offsetWidth || !img.offsetHeight) return;
+  vfxFilters();
+  const host = img.offsetParent; if (!host) return;
+  host.querySelectorAll(".vfx-img").forEach(el => { if (el._for === img) el.remove(); });
+  const box = document.createElement("span"); box.className = "vfx-img"; box.setAttribute("aria-hidden", "true"); box._for = img;
+  Object.assign(box.style, { left: img.offsetLeft + "px", top: img.offsetTop + "px", width: img.offsetWidth + "px", height: img.offsetHeight + "px" });
+  const cols = Math.max(4, Math.round(img.offsetWidth / 30)), rows = Math.max(5, Math.round(img.offsetHeight / 24));
+  let h = `<span class="vfx-blocks" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${blocksHtml(cols, rows, GLITCH_IMG_MS, 4)}</span>`;
+  box.innerHTML = h;
+  for (const [c, dir] of [["r", 1], ["c", -1]]) {
+    const g = document.createElement("img"); g.src = img.currentSrc || img.src; g.alt = ""; g.className = "vfx-ghost g-" + c;
+    g.animate(ghostFrames(dir, Math.min(40, img.offsetWidth * .2)), { duration: GLITCH_IMG_MS * vfxRnd(.8, .92), fill: "both" });
+    box.appendChild(g);
+  }
+  host.appendChild(box);
+  img.animate(realFrames("transform", 10, false), { duration: GLITCH_IMG_MS });
+  setTimeout(() => box.remove(), GLITCH_IMG_MS + 100);
+}
+// Card images glitch in when they load: the hover preview, Combos' card pictures and the artwork choices.
+const GLITCH_IMG_SEL = ".cardpv img, .cb-img, .print img, .artprev";
+document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.matches(GLITCH_IMG_SEL) && !t.closest(".vfx-ghosts, .vfx-img")) glitchImage(t); }, true);
 
 function renderLibrary() {
   if (!S.ready) return `<div class="empty"><h2>Opening your library…</h2><p>Your decks load here in a moment.</p></div>`;
@@ -2113,7 +2157,7 @@ function listText(d, rows, withCmd) {
 
 // ---------- dialogs ----------
 function openDialog(dl) { S.dialog = dl; renderDialog(); }
-function closeDialog() { S.dialog = null; const s = $(".scrim"); if (s) s.remove(); }
+function closeDialog() { S.dialog = null; lastDialogKey = null; const s = $(".scrim"); if (s) s.remove(); document.querySelectorAll(".vfx.p, .vfx-ghosts.p").forEach(el => el.remove()); }
 function renderDialog() {
   let s = $(".scrim"); if (!s) { s = document.createElement("div"); s.className = "scrim"; document.body.appendChild(s); }
   const dl = S.dialog; let h = "";
@@ -2184,6 +2228,9 @@ function renderDialog() {
   }
   const keepScroll = s.dataset.kind === dl.kind ? s.scrollTop : 0; s.dataset.kind = dl.kind;
   s.innerHTML = h; s.scrollTop = keepScroll;
+  const dlgKey = dl.kind + ":" + (dl.state || "");
+  if (dlgKey !== lastDialogKey && !reduceMotion()) playGlitch(s.querySelector(".dialog"), "pop");
+  lastDialogKey = dlgKey;
   if (dl.kind === "new") { updateNewParse(); setTimeout(() => $("#n-name") && !dl.text && $("#n-name").focus(), 0); }
   if (dl.kind === "update") { updateDiff(); if (!dl.fetchedLink && !$("#u-link").value) setTimeout(() => $("#u-link") && $("#u-link").focus(), 0); }
   if (dl.kind === "binadd") { updateBinAdd(); setTimeout(() => $("#ba-search") && $("#ba-search").focus(), 0); }
