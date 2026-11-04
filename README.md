@@ -29,12 +29,14 @@ Sign-in and sync use Firebase (Google sign-in plus a Firestore database). The se
 
 | Record | Holds |
 |---|---|
-| `decks/{deck id}` | The deck, plus `hist.sigs`: the list of its history pieces in order |
-| `decks/{deck id}/history/c…` | Up to 200 history entries each (fewer if they're large) |
-| `meta/bin` | The card bin's change number and `sigs`, the list of its 10 sections |
+| `decks/{deck id}` | The deck, plus `hist`: the list of its history pieces in order and how many changes they hold |
+| `decks/{deck id}/history/c…` | Up to 500 history entries each (fewer if they're large) |
+| `meta/bin` | The card bin's change number and `sigs`, the list of its 5 sections |
 | `bin/c…` | One section of the card bin; a card's section comes from its permanent Scryfall ID |
 
-A piece is named after its contents, so it never changes once saved. A change saves the new pieces and the main record together in one batch, then removes the pieces nothing uses any more, so a typical change costs 2–3 writes. Other devices only show a new version once every piece it lists has arrived. Accounts saved the older all-in-one way are read as before and rewritten in pieces automatically the first time they load. The first time someone signs in, the decks saved in that browser move into their account.
+A piece is named after its contents, so it never changes once saved. A change saves the new pieces and the main record together in one batch, then removes the pieces nothing uses any more, so a typical change costs 2–3 writes. Other devices only show a new version once every piece it lists has arrived.
+
+To keep reads down, opening the site reads one record per deck plus the bin (6 records); a deck's history is only read when that deck is opened, when undoing a move with it, or when making a backup. A change to a deck whose history hasn't been read here (such as taking a card from it for another deck) is kept in the deck record's `log` and folded into the pieces the next time a device that has read it saves. Accounts saved the older all-in-one way are read as before and rewritten in pieces automatically the first time they load. The first time someone signs in, the decks saved in that browser move into their account.
 
 ## Card list updates
 

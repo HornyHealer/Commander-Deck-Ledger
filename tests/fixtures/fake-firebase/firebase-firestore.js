@@ -27,6 +27,7 @@ export function onSnapshot(ref, opts, next) {
     if (ref.kind === 'doc') {
       const cur = g.store[ref.path]; const s = JSON.stringify(cur);
       if (prev !== null && prev === s) return; prev = s;
+      g.reads = (g.reads || 0) + 1; // what Firestore would bill as reads
       next(docSnap(ref.id, cur));
       return;
     }
@@ -38,6 +39,7 @@ export function onSnapshot(ref, opts, next) {
     for (const id of Object.keys(before)) if (!(id in now)) changes.push({ type: 'removed', doc: docSnap(id, JSON.parse(before[id])) });
     const first = prev === null; prev = now;
     if (!first && !changes.length) return;
+    g.reads = (g.reads || 0) + Math.max(first ? 1 : 0, changes.filter(c => c.type !== 'removed').length);
     next({ docChanges: () => changes, size: Object.keys(now).length, metadata: meta });
   } };
   g.snapListeners.push(listener);

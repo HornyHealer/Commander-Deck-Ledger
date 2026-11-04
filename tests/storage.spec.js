@@ -33,7 +33,7 @@ const remote = (page, p, data) => page.evaluate(([p, data]) => window.__fakeFire
 function oldAccount() {
   const [zagras, rats] = clone(BACKUP.decks);
   zagras.rev = 1761500000000; rats.rev = 1761500000000;
-  for (let k = 0; k < 225; k++) {
+  for (let k = 0; k < 550; k++) {
     rats.log.push({ id: 'a' + k, t: 1761200000000 + k * 2000, kind: 'swap', out: [], in: [{ n: 'Brainstorm', q: 1 }] });
     rats.log.push({ id: 'b' + k, t: 1761200001000 + k * 2000, kind: 'swap', out: [{ n: 'Brainstorm', q: 1 }], in: [] });
   }
@@ -53,19 +53,18 @@ test('decks and a bin saved the old way move to the new layout by themselves', a
   await openWith(page, before);
   await expect.poll(async () => newLayout(await fakeStore(page))).toBe(true);
   const s = await fakeStore(page);
-  // The deck no longer carries its history: 453 entries now sit in 3 pieces of up to 200.
+  // The deck no longer carries its history: its 1,100+ entries now sit in 3 pieces of up to 500.
   expect(s[DECKS + 'fixture-rats'].log).toBeUndefined();
   expect(s[DECKS + 'fixture-rats'].hist.sigs).toHaveLength(3);
   expect(pieceKeys(s, DECKS + 'fixture-rats/history/')).toHaveLength(3);
   const ids = deckLog(s, 'fixture-rats').map(e => e.id);
-  expect(ids.slice(0, 452)).toEqual(before[DECKS + 'fixture-rats'].log.map(e => e.id));
+  expect(ids.slice(0, 1102)).toEqual(before[DECKS + 'fixture-rats'].log.map(e => e.id));
   expect(deckLog(s, 'fixture-zagras').map(e => e.id)).toEqual(before[DECKS + 'fixture-zagras'].log.map(e => e.id));
-  // The bin is in 10 sections with every card still there.
-  expect(s[META].sigs).toHaveLength(10);
+  // The bin is in 5 sections with every card still there.
+  expect(s[META].sigs).toHaveLength(5);
   expect(s[META].cards).toEqual([]);
   const sections = pieceKeys(s, 'users/u-test/bin/');
-  expect(sections.length).toBeGreaterThan(5);
-  expect(sections.length).toBeLessThanOrEqual(10);
+  expect(sections).toHaveLength(5);
   const cards = binCards(s);
   expect(cards).toHaveLength(300);
   expect(cards.reduce((a, c) => a + c.q, 0)).toBe(before[META].cards.reduce((a, c) => a + c.q, 0));
@@ -113,7 +112,7 @@ test('a big bin changes one section at a time', async ({ page }) => {
   const s = await fakeStore(page);
   const changed = s[META].sigs.filter((n, k) => n !== bin1[k]).length;
   expect(changed).toBeGreaterThan(0);
-  expect(changed).toBeLessThan(10);
+  expect(changed).toBeLessThan(5);
   // The deleted deck's history pieces went with it.
   expect(pieceKeys(s, DECKS + 'fixture-rats')).toEqual([]);
   expect(binCards(s).length).toBeGreaterThan(300);
@@ -153,4 +152,97 @@ test('history saved by an older copy of the site is kept and folded in', async (
   await remote(page, DECKS + 'fixture-zagras', deck);
   await expect.poll(async () => { const x = await fakeStore(page); return !x[DECKS + 'fixture-zagras'].log && deckLog(x, 'fixture-zagras').some(e => e.id === 'oldsite1'); }).toBe(true);
   expect(deckLog(await fakeStore(page), 'fixture-zagras')).toHaveLength(n + 1);
+});
+
+// ---- History is only read when a deck is opened ----
+const reads = page => page.evaluate(() => window.__fakeFirebase.reads || 0);
+const isChange = e => e.kind === 'swap' || e.kind === 'import';
+// An account already in the new layout, opened fresh (as on another day or another device).
+async function openFresh(page) {
+  await openWith(page, oldAccount());
+  await expect.poll(async () => newLayout(await fakeStore(page))).toBe(true);
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  await page.reload();
+  await expect(page.locator('.deckbox')).toHaveCount(2);
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+}
+const deckRow = (page, name) => page.locator('.groups .row', { hasText: name });
+
+test('the home screen reads one record per deck, and history only when a deck is opened', async ({ page }) => {
+  await openFresh(page);
+  const s = await fakeStore(page);
+  // 2 decks, the bin's record and its 5 sections; none of the 3 history pieces.
+  await page.waitForTimeout(300);
+  expect(await reads(page)).toBe(2 + 1 + 5);
+  const changes = deckLog(s, 'fixture-rats').filter(isChange).length;
+  await expect(page.locator('.deckbox', { hasText: 'Rat Pack' })).toContainText(`${changes} changes`);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry')).toHaveCount(deckLog(s, 'fixture-rats').length);
+  expect(await reads(page)).toBe(2 + 1 + 5 + 3);
+});
+
+test('a move with an unopened deck saves without reading its history, and undo still works from either side', async ({ page }) => {
+  await openFresh(page);
+  const piecesBefore = (await fakeStore(page))[DECKS + 'fixture-rats'].hist.sigs;
+  const nBefore = deckLog(await fakeStore(page), 'fixture-rats').length;
+  // Make a deck that needs Sol Ring and take it from Rat Pack, which hasn't been opened.
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', '1 Krenko, Mob Boss [Commander]\n1 Sol Ring');
+  await page.click('[data-act="chk-create"]');
+  await page.fill('#n-name', 'Grab Test');
+  await page.click('[data-dlg="create"]');
+  const sol = page.locator('.inc .swap', { hasText: 'Sol Ring' });
+  await sol.locator('select.grab-src').selectOption({ label: 'Rat Pack' });
+  await sol.getByRole('button', { name: 'Grab' }).click();
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  // Rat Pack's history pieces weren't touched; the new entry waits in the deck record.
+  await expect.poll(async () => ((await fakeStore(page))[DECKS + 'fixture-rats'].log || []).map(e => e.xfer && e.xfer.to && e.xfer.to.name)).toContain('Grab Test');
+  let s = await fakeStore(page);
+  expect(s[DECKS + 'fixture-rats'].hist.sigs).toEqual(piecesBefore);
+
+  // Fresh visit, then undo from the new deck: Rat Pack's history is read first and the move undone in both.
+  await page.reload();
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Grab Test' }).click();
+  await page.click('[data-tab="history"]');
+  await page.click('[data-act="undo"]');
+  await expect(page.locator('.hist .confirm')).toContainText('also undone in Rat Pack');
+  await page.click('[data-act="undo-yes"]');
+  await expect(page.locator('.toast')).toContainText('undone here and in Rat Pack');
+  await page.click('[data-act="home"]');
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-tab="current"]');
+  await expect(deckRow(page, 'Sol Ring')).toHaveCount(1);
+  await page.click('[data-tab="history"]');
+  await expect(page.locator('.hist .entry')).toHaveCount(nBefore);
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  // Saved in full again: the entries are back in the pieces, none left in the deck record.
+  s = await fakeStore(page);
+  expect(s[DECKS + 'fixture-rats'].log).toBeUndefined();
+  expect(deckLog(s, 'fixture-rats')).toHaveLength(nBefore);
+});
+
+test("a backup includes the history of decks that weren't opened", async ({ page }) => {
+  await openFresh(page);
+  const n = deckLog(await fakeStore(page), 'fixture-rats').length;
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-act="export"]').first().click()]);
+  const data = JSON.parse(require('fs').readFileSync(await download.path(), 'utf8'));
+  expect(data.decks.find(d => d.id === 'fixture-rats').log).toHaveLength(n);
+});
+
+test('a bin saved in 10 sections regroups into 5', async ({ page }) => {
+  const acct = oldAccount();
+  const cards = acct[META].cards; const ten = Array.from({ length: 10 }, () => []);
+  cards.forEach((c, k) => ten[k % 10].push(c));
+  const names = ten.map((_, k) => 'cten' + k);
+  delete acct[META].cards; Object.assign(acct[META], { fmt: 2, sigs: names, cards: [] });
+  ten.forEach((p, k) => { acct['users/u-test/bin/' + names[k]] = { p }; });
+  await openWith(page, acct);
+  await expect.poll(async () => (await fakeStore(page))[META].sigs.length).toBe(5);
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  const s = await fakeStore(page);
+  expect(pieceKeys(s, 'users/u-test/bin/')).toHaveLength(5);
+  expect(binCards(s)).toHaveLength(300);
 });

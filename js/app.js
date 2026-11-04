@@ -854,13 +854,16 @@ function cloudInit() {
 // Firestore holds at most 1 MB per record, so a deck's history and the card bin are saved as separate
 // "piece" records instead of inside one big one:
 //   users/{uid}/decks/{id}              the deck itself, with a list of its history pieces (hist.sigs)
-//   users/{uid}/decks/{id}/history/c…   up to 200 history entries each
+//   users/{uid}/decks/{id}/history/c…   up to 500 history entries each
 //   users/{uid}/meta/bin                the bin's change number and its list of pieces (sigs)
-//   users/{uid}/bin/c…                  one of 10 sections of the bin, split by each card's permanent ID
+//   users/{uid}/bin/c…                  one of 5 sections of the bin, split by each card's permanent ID
 // A piece is named after its contents, so a piece never changes once saved; a change saves the new pieces and
 // the main record in one go, then removes pieces nothing uses any more. Another device only takes the new
 // version once every piece it lists has arrived, so it never shows half a change.
-const HIST_PIECE = 200, PIECE_CHARS = 300000, BIN_PARTS = 10;
+// A deck's history is only read when the deck is opened (or something needs it, like undoing a move with
+// another deck, or a backup); until then the deck record's hist.changes stands in for the count. Changes made
+// to a deck before its history has been read are saved in the deck record's "log" and folded in later.
+const HIST_PIECE = 500, PIECE_CHARS = 300000, BIN_PARTS = 5;
 function strHash(str) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
@@ -955,17 +958,41 @@ function stopCloud() {
   CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = [];
   for (const o of PIECES.values()) { try { if (o.unsub) o.unsub(); } catch {} }
   PIECES.clear(); oldFormat.clear(); synced.clear(); syncedBinRev = 0;
-  CLOUD.loaded = CLOUD.decksSeen = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = CLOUD.binTaken = false;
+  histInfo.clear(); for (const id of [...histWaiters.keys()]) histDone(id, false);
+  CLOUD.loaded = CLOUD.decksSeen = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = CLOUD.binTaken = CLOUD.binOld = false;
 }
-const oldFormat = new Set(); // records still saved the old, all-in-one way: rewritten once the server has answered
+const oldFormat = new Set(); // decks to save again in the current layout once the server has answered
+function resaveDeck(id) { if (CLOUD.serverDecks) { synced.set(id, -1); persist(); } else oldFormat.add(id); }
 function takeDeck(id, body, resave) {
   const d = normalizeDeck(body);
-  syncDeckIds(d); S.decks.set(id, d); synced.set(id, resave ? -1 : d.rev || 0);
-  if (convertUnowned(d)) { touch(d); persist(); } else if (resave) persist();
+  syncDeckIds(d); S.decks.set(id, d); synced.set(id, d.rev || 0);
+  if (convertUnowned(d)) { touch(d); persist(); } else if (resave) resaveDeck(id);
 }
 function takeBin(cards, rev, resave) {
-  S.loose = { cards, rev }; syncBinIds(); syncedBinRev = resave ? -1 : rev; CLOUD.binTaken = true;
-  if (resave) persist();
+  S.loose = { cards, rev }; syncBinIds(); syncedBinRev = rev; CLOUD.binTaken = true;
+  if (resave) { if (CLOUD.serverBin) { syncedBinRev = -1; persist(); } else CLOUD.binOld = true; }
+}
+// Decks whose history hasn't been read yet: deck id -> { sigs, changes } as saved in the account.
+const histInfo = new Map(), histWaiters = new Map();
+const historyReady = id => !histInfo.has(id);
+const changeCount = d => d.log.filter(isChange).length + (histInfo.has(d.id) ? histInfo.get(d.id).changes || 0 : 0);
+function histDone(id, ok) { const w = histWaiters.get(id) || []; histWaiters.delete(id); w.forEach(f => f(ok)); }
+// Reads a deck's history if it hasn't been yet. Resolves true once it's there, false if it couldn't be read.
+function ensureHistory(id) {
+  if (!CLOUD.user || historyReady(id) || !S.decks.has(id)) return Promise.resolve(true);
+  return new Promise(res => {
+    const w = histWaiters.get(id) || []; w.push(res); histWaiters.set(id, w);
+    if (w.length === 1) { loadHistory(id); setTimeout(() => histDone(id, false), 15000); }
+  });
+}
+function loadHistory(id) {
+  const info = histInfo.get(id); if (!info) return histDone(id, true);
+  waitPieces("d:" + id, info.sigs, parts => {
+    const d = S.decks.get(id); if (!d || histInfo.get(id) !== info) return false;
+    const log = [].concat(...parts); const have = new Set(log.map(e => e && e.id));
+    for (const e of d.log) if (e && !have.has(e.id)) log.push(e); // changes made before the history arrived
+    d.log = log; syncDeckIds(d); histInfo.delete(id); histDone(id, true);
+  });
 }
 function onUser(user) {
   CLOUD.authReady = true;
@@ -986,25 +1013,34 @@ function onUser(user) {
   CLOUD.unsubs.push(fsM.onSnapshot(fsM.collection(db, "users", uid, "decks"), { includeMetadataChanges: true }, snap => {
     for (const ch of snap.docChanges()) {
       const id = ch.doc.id;
-      if (ch.type === "removed") { if (!ch.doc.metadata.hasPendingWrites) { S.decks.delete(id); synced.delete(id); oldFormat.delete(id); dropPieces("d:" + id); } continue; }
+      if (ch.type === "removed") { if (!ch.doc.metadata.hasPendingWrites) { S.decks.delete(id); synced.delete(id); oldFormat.delete(id); histInfo.delete(id); histDone(id, false); dropPieces("d:" + id); } continue; }
       if (ch.doc.metadata.hasPendingWrites) continue; // our own change on its way to the server
       const data = ch.doc.data(); if (!data || !Array.isArray(data.cur)) continue;
       const local = S.decks.get(id);
       if (local && (local.rev || 0) >= (data.rev || 0)) continue;
       if (data.fmt === 2 && data.hist && Array.isArray(data.hist.sigs)) {
         oldFormat.delete(id);
-        // An older copy of the site still open somewhere saves new history entries in the deck itself.
+        // Changes saved before the history was read (or by an older copy of the site) sit in the deck itself.
         const extra = Array.isArray(data.log) ? data.log : [];
+        const body0 = Object.assign({}, data, { id, log: extra.slice() }); delete body0.fmt; delete body0.hist;
+        if ((!local || histInfo.has(id)) && typeof data.hist.changes === "number") {
+          // Not opened here yet: take the deck now and leave its history until it's needed.
+          const info = { sigs: data.hist.sigs, changes: data.hist.changes };
+          histInfo.set(id, info); takeDeck(id, body0, false);
+          if (histWaiters.has(id)) loadHistory(id);
+          continue;
+        }
         waitPieces("d:" + id, data.hist.sigs, parts => {
           const now = S.decks.get(id); if (now && (now.rev || 0) >= (data.rev || 0)) return false;
           const log = [].concat(...parts); const have = new Set(log.map(e => e && e.id));
           for (const e of extra) if (e && !have.has(e.id)) log.push(e);
-          const body = Object.assign({}, data, { id, log }); delete body.fmt; delete body.hist;
-          takeDeck(id, body, extra.length > 0);
+          histInfo.delete(id);
+          takeDeck(id, Object.assign(body0, { log }), extra.length > 0 || typeof data.hist.changes !== "number");
+          histDone(id, true);
         });
       } else {
-        oldFormat.add(id); watchPieces("d:" + id);
-        takeDeck(id, Object.assign({}, data, { id }), false);
+        histInfo.delete(id);
+        takeDeck(id, Object.assign({}, data, { id }), true);
       }
     }
     CLOUD.decksSeen = true;
@@ -1026,7 +1062,7 @@ function onUser(user) {
         const extra = Array.isArray(data.cards) ? data.cards : []; // added by an older copy of the site
         waitPieces("bin", data.sigs, parts => {
           if (CLOUD.binTaken && rev <= (S.loose.rev || 0)) return false;
-          takeBin([].concat(...parts, extra), rev, extra.length > 0);
+          takeBin([].concat(...parts, extra), rev, extra.length > 0 || data.sigs.length !== BIN_PARTS);
         });
       } else if (data && newer && Array.isArray(data.cards)) { CLOUD.binOld = true; takeBin(data.cards, rev, false); }
     }
@@ -1058,7 +1094,7 @@ function maybeMigrate() {
     const here = S.decks.get(raw.id);
     if (here && (here.rev || 0) >= (raw.rev || 0)) continue;
     const d = normalizeDeck(clone(raw)); syncDeckIds(d); if (!d.rev) touch(d);
-    S.decks.set(d.id, d); synced.delete(d.id); moved++;
+    S.decks.set(d.id, d); synced.delete(d.id); histInfo.delete(d.id); histDone(d.id, true); moved++;
   }
   for (const c of binCards) {
     const ex = S.loose.cards.find(x => x.n === c.n && (x.from || "") === (c.from || ""));
@@ -1080,15 +1116,21 @@ function cloudFlush() {
   for (const d of S.decks.values()) {
     if (synced.has(d.id) && synced.get(d.id) === (d.rev || 0)) continue;
     synced.set(d.id, d.rev || 0);
+    if (!historyReady(d.id)) {
+      // History not read here: keep the saved pieces and put this device's new entries in the deck record.
+      const info = histInfo.get(d.id);
+      cloudWrite(fsM.setDoc(fsM.doc(db, "users", uid, "decks", d.id), forCloud(Object.assign({}, d, { fmt: 2, hist: { sigs: info.sigs, changes: info.changes } }))));
+      continue;
+    }
     // The deck and its new history pieces are saved together, so other devices never see one without the other.
     const b = fsM.writeBatch(db);
     const sigs = writePieces(b, "d:" + d.id, packHistory(d.log || []));
-    const body = Object.assign({}, d, { fmt: 2, hist: { sigs } }); delete body.log;
+    const body = Object.assign({}, d, { fmt: 2, hist: { sigs, changes: d.log.filter(isChange).length } }); delete body.log;
     b.set(fsM.doc(db, "users", uid, "decks", d.id), forCloud(body));
     cloudWrite(b.commit());
   }
   for (const id of [...synced.keys()]) if (!S.decks.has(id)) {
-    synced.delete(id); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id)));
+    synced.delete(id); histInfo.delete(id); histDone(id, false); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id)));
     watchPieces("d:" + id); clearPieces("d:" + id);
   }
   if ((S.loose.rev || 0) !== syncedBinRev) {
@@ -1276,7 +1318,7 @@ function render() {
   if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
   else if (S.view === "check") html += renderCheck();
-  else if (S.view === "deck" && d) html += renderDeck(d);
+  else if (S.view === "deck" && d) html += historyReady(d.id) ? renderDeck(d) : deckOpening(d);
   else if (S.view === "deck" && S.ready) { S.view = "library"; html += renderLibrary(); }
   else html += renderLibrary();
   html += `<footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
@@ -1289,7 +1331,7 @@ function renderLibrary() {
   const decks = [...S.decks.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   if (!decks.length) return `<div class="empty"><h2>No decks yet</h2><p>Paste a list the same way you'd import it into Archidekt, one card per line like <span class="mono">1 Sol Ring</span>. The first list becomes the deck's original list, every swap after that goes into its history, and cards you're still waiting on can be saved as incoming until they arrive.</p><div class="emptybtns"><button class="btn primary" data-act="new">${ICONS.plus}Add your first deck</button><button class="btn" data-act="example">Try an example deck</button></div><div class="emptybtns">${backupBtns(true)}</div></div>${renderBin()}`;
   return `<div class="sect"><span>Decks</span><b>${String(decks.length).padStart(2, "0")}</b></div><div class="libtools">${backupBtns()}</div>${backupWarning()}<div class="lib-grid">${decks.map((d, i) => {
-    const ci = deckCI(d); const changes = d.log.filter(isChange).length; const t = total(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
+    const ci = deckCI(d); const changes = changeCount(d); const t = total(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
     const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : d.name;
     const arch = d.link ? `<a class="arch" href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : `<button class="arch add" data-editlink="${esc(d.id)}">${ICONS.plus}Archidekt link</button>`;
     const art = artNameOf(d);
@@ -1418,7 +1460,28 @@ function backupData() {
   const decks = [...S.decks.values()].map(d => { const c = clone(d); delete c.art; delete c.rev; c.bench = { out: [], in: [], note: "" }; return c; });
   return { app: "commander-deck-ledger", version: 1, exported: new Date().toISOString(), decks, bin: { cards: clone(S.loose.cards || []) } };
 }
+// Undoes a deck's last change. Undoing a move with another deck changes that deck's history too,
+// so it's read first if it hasn't been.
+const unreadPartners = e => e ? [e.xfer && (e.xfer.to || e.xfer.from || {}).id, e.pair && e.pair.deck, ...((e.fromBin && e.fromBin.srcs) || []).map(x => x.deck)].filter(id => id && !historyReady(id)) : [];
+function undoNow(d) {
+  const last = d.log[d.log.length - 1];
+  const others = unreadPartners(last);
+  if (others.length) return Promise.all(others.map(ensureHistory)).then(ok => ok.every(Boolean) ? undoNow(d) : toast("Couldn't get the other deck's history, so nothing was undone. Check your connection and try again."));
+  const pt = last && last.xfer ? xferPartner(last) : last && (last.fromBin || last.pair) ? binPartner(d, last) : null;
+  undoLast(d); S.confirm = null; save(d); render();
+  return toast(pt ? `Move undone here and in ${pt.deck.name}.` : "Change undone.");
+}
+// A deck whose history hasn't been read yet: read it, then show the deck.
+function deckOpening(d) {
+  if (!histWaiters.has(d.id)) ensureHistory(d.id).then(ok => { if (!ok) toast("Couldn't get this deck's history. Check your connection; it will keep trying."); safeRender(); });
+  return `<div class="empty"><h2>Opening ${esc(d.name)}…</h2><p>Getting its history from your account.</p></div>`;
+}
 function exportBackup() {
+  const lazy = [...S.decks.keys()].filter(id => !historyReady(id));
+  if (lazy.length) {
+    toast("Getting every deck's history for the backup…");
+    return Promise.all(lazy.map(ensureHistory)).then(ok => ok.every(Boolean) ? exportBackup() : toast("Couldn't get every deck's history, so no backup was made. Check your connection and try again."));
+  }
   const text = JSON.stringify(backupData(), null, 1);
   const now = new Date(); const name = "commander-ledger-backup-" + [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-") + ".json";
   try {
@@ -2248,11 +2311,17 @@ document.addEventListener("click", e => {
   if (act === "install" && installEvt) { const ev = installEvt; ev.prompt(); ev.userChoice.finally(() => { installEvt = null; render(); }); return; }
   if (act === "save-incoming" && d) return saveIncoming(d);
   if (act === "inc-cancel-no") { S.confirm = null; return render(); }
-  if (act === "undo") { S.confirm = "undo"; return render(); }
+  if (act === "undo") {
+    S.confirm = "undo";
+    // Read the other deck's history now, so the question can name it.
+    const others = d ? unreadPartners(d.log[d.log.length - 1]) : [];
+    if (others.length) Promise.all(others.map(ensureHistory)).then(() => safeRender());
+    return render();
+  }
   if (act === "unprint-no" || act === "binrm-no") { S.confirm = null; return render(); }
   if (act === "copy-toprint" && d) { if ($(".menu")) render(); return copyText(incomingNeeds(d).map(x => `${x.q}x ${x.n}`).join("\n"), "Incoming cards"); }
   if (act === "undo-no") { S.confirm = null; return render(); }
-  if (act === "undo-yes" && d) { const last = d.log[d.log.length - 1]; const pt = last && last.xfer ? xferPartner(last) : last && (last.fromBin || last.pair) ? binPartner(d, last) : null; undoLast(d); S.confirm = null; save(d); render(); return toast(pt ? `Move undone here and in ${pt.deck.name}.` : "Change undone."); }
+  if (act === "undo-yes" && d) return undoNow(d);
   const dlg = t.dataset.dlg; if (!dlg) return;
   if (dlg === "close") return closeDialog();
   if (dlg === "create") {
