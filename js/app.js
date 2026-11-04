@@ -1360,15 +1360,33 @@ function render() {
   if (CLOUD.enabled && CLOUD.authReady && !CLOUD.user && !CLOUD.failed && S.view === "library") html += `<div class="signin-note"><div><b>Sync your decks</b> Sign in with Google to keep your decks in step between your phone and computer.${S.decks.size || (S.loose.cards || []).length ? " The decks saved in this browser move into your account the first time you sign in." : ""}</div><button class="btn primary" data-act="signin">${ICONS.user}Sign in with Google</button></div>`;
   if (S.ready && !S.live && !CLOUD.user) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;
   const d = S.deckId && S.decks.get(S.deckId);
+  // Everything below the header sits in .view, which plays a short glitch when the view changes.
+  const viewKey = S.view + (S.view === "deck" ? ":" + S.deckId : "");
+  const glitch = S.ready && lastViewKey !== null && viewKey !== lastViewKey && !reduceMotion();
+  lastViewKey = S.ready ? viewKey : null;
+  html += `<div class="view${glitch ? " vfx-in" : ""}">`;
   if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
   else if (S.view === "check") html += renderCheck();
   else if (S.view === "deck" && d) html += historyReady(d.id) ? renderDeck(d) : deckOpening(d);
   else if (S.view === "deck" && S.ready) { S.view = "library"; html += renderLibrary(); }
   else html += renderLibrary();
-  html += `<footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
+  html += `</div><footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
+  if (glitch) playGlitch();
   if (S.dialog) renderDialog();
+}
+// ---------- view-switch glitch (Marathon-style): scanlines, a sweeping bar and a few torn slices ----------
+let lastViewKey = null;
+const reduceMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+function playGlitch() {
+  document.querySelectorAll(".vfx").forEach(el => el.remove());
+  const fx = document.createElement("div"); fx.className = "vfx"; fx.setAttribute("aria-hidden", "true");
+  fx.innerHTML = '<i class="vfx-bar"></i><i class="vfx-tear t1"></i><i class="vfx-tear t2"></i><i class="vfx-tear t3"></i>';
+  document.body.appendChild(fx);
+  const done = () => fx.remove();
+  fx.addEventListener("animationend", e => { if (e.target === fx) done(); });
+  setTimeout(done, 600);
 }
 
 function renderLibrary() {

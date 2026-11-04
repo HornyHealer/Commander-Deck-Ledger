@@ -636,3 +636,40 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .cb-card, .cb-img { width: 104px; }
   .cb-plus { margin-top: 1.2em; }
 }
+
+/* ---------- View-switch glitch: about a quarter of a second, Marathon-style ---------- */
+/* The new view snaps in with torn bands and a red/cyan split; an overlay adds scanlines, a sweeping acid bar
+   and a few offset slices. Nothing here moves the page's layout, and it's skipped entirely when the device
+   asks for reduced motion. */
+.view.vfx-in { animation: vfx-reveal .26s steps(1, end) both; }
+@keyframes vfx-reveal { /* bands measured in screen heights, so they show on long pages too */
+  0%   { opacity: 0; clip-path: inset(0 0 100% 0); }
+  12%  { opacity: 1; clip-path: inset(0 0 calc(100% - 22vh) 0); text-shadow: 3px 0 var(--hot), -3px 0 var(--cyan); }
+  24%  { clip-path: inset(14vh 0 calc(100% - 46vh) 0); text-shadow: -4px 0 var(--hot), 4px 0 var(--cyan); }
+  36%  { clip-path: inset(0 0 calc(100% - 64vh) 0); text-shadow: 2px 0 var(--hot), -2px 0 var(--cyan); }
+  48%  { clip-path: inset(30vh 0 0 0); text-shadow: -2px 0 var(--hot), 2px 0 var(--cyan); }
+  60%  { clip-path: inset(0 0 calc(100% - 85vh) 0); text-shadow: 1px 0 var(--hot), -1px 0 var(--cyan); }
+  72%  { clip-path: inset(0); text-shadow: none; }
+  100% { opacity: 1; clip-path: none; text-shadow: none; }
+}
+}
+.vfx { position: fixed; inset: 0; z-index: 45; pointer-events: none; overflow: hidden;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(8 8 7 / .16) 2px 3px);
+  animation: vfx-lines .28s linear both; }
+@keyframes vfx-lines { 0% { opacity: 0; } 10% { opacity: 1; } 70% { opacity: .8; } 100% { opacity: 0; } }
+.vfx-bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--acid);
+  box-shadow: 0 0 0 1px var(--ink), 0 0 18px 2px var(--acid); animation: vfx-sweep .26s cubic-bezier(.3, 0, .2, 1) both; }
+@keyframes vfx-sweep { from { transform: translateY(-4px); } to { transform: translateY(100vh); } }
+.vfx-tear { position: absolute; left: 0; right: 0; height: 10px; opacity: 0; background: var(--acid); animation: vfx-tear .26s steps(1, end) both; }
+.vfx-tear.t1 { top: 18%; height: 6px; }
+.vfx-tear.t2 { top: 47%; height: 14px; background: var(--hot); animation-delay: .04s; }
+.vfx-tear.t3 { top: 73%; height: 4px; background: var(--cyan); animation-delay: .09s; }
+@keyframes vfx-tear {
+  0%   { opacity: 0; transform: translateX(0); }
+  15%  { opacity: .85; transform: translateX(-24px); }
+  35%  { opacity: 0; }
+  50%  { opacity: .7; transform: translateX(16px) scaleY(.5); }
+  65%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .view.vfx-in, .vfx { animation: none !important; } .vfx { display: none; } }
