@@ -138,6 +138,28 @@ function parseList(text) {
 // ---------- state ----------
 let SORT0 = "cost"; try { SORT0 = localStorage.getItem("ledger-sort") || "cost"; } catch {}
 const S = { sort: SORT0, loose: { cards: [] }, decks: new Map(), view: "library", deckId: null, tab: "current", filter: "", printedFilter: "all", db: null, col: null, live: false, ready: false, confirm: null, dialog: null };
+
+// ---------- error reports ----------
+// When something goes wrong in a visitor's browser, a short report goes to the Cloudflare Worker: the error
+// message, where it happened, the page, the browser, whether it's the installed app or signed in, and the site
+// version. Never deck contents, names or emails. Only from the real site, at most 5 per visit, each error once.
+// The daily health check posts new reports to the "Error reports" issue on GitHub.
+const REPORT_URL = "https://cdl-archidekt.deckledger.workers.dev/report";
+const reportsOn = () => location.hostname === "hornyhealer.github.io" || window.LEDGER_REPORT_ERRORS === true;
+const reportedErrors = new Set();
+function reportError(kind, message, where) {
+  try {
+    const msg = String(message || "").trim().slice(0, 300);
+    if (!reportsOn() || !msg || msg === "Script error." || reportedErrors.size >= 5) return;
+    const key = kind + "|" + msg + "|" + (where || ""); if (reportedErrors.has(key)) return; reportedErrors.add(key);
+    const src = (document.querySelector('script[src*="js/app.js"]') || {}).src || "";
+    const body = { kind, message: msg, where: String(where || "").slice(0, 160), view: S.view, browser: navigator.userAgent.slice(0, 200),
+      app: typeof isStandalone === "function" && isStandalone(), signedIn: !!(typeof CLOUD !== "undefined" && CLOUD.user), version: (src.match(/[?&]v=([\w-]+)/) || [])[1] || "" };
+    fetch(REPORT_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+  } catch {}
+}
+window.addEventListener("error", e => { if (e && e.message) reportError("crash", e.message, (String(e.filename || "").split("/").pop().split("?")[0]) + (e.lineno ? ":" + e.lineno : "")); });
+window.addEventListener("unhandledrejection", e => { const r = e && e.reason; reportError("crash", r && (r.message || r.code) || String(r), r && r.stack ? String(r.stack).split("\n")[1] || "" : ""); });
 const writeChains = new Map();
 let pendingRender = false;
 
@@ -358,7 +380,7 @@ async function archFetch(where, btn) {
       const ta = $("#chk-list"); if (ta) ta.value = CHECK_TEXT; updateCheck();
     }
     say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
-  } catch (err) { say(archMsg(err), true); }
+  } catch (err) { say(archMsg(err), true); if (!["bad-link", "not-found", "private", "empty", "network"].includes(err && err.message)) reportError("archidekt", "Archidekt import: " + (err && err.message), where); }
   finally { const b = $(`[data-arch="${where}"]`); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
 }
 
@@ -385,6 +407,7 @@ async function openCombos(d) {
     if (S.dialog && S.dialog.kind === "combos" && S.dialog.id === d.id) { S.dialog.state = "ok"; S.dialog.data = data; renderDialog(); }
     render();
   } catch (err) {
+    if (!["network", "busy"].includes(err && err.message)) reportError("combos", "Combo finder: " + (err && err.message), "combos");
     if (S.dialog && S.dialog.kind === "combos" && S.dialog.id === d.id) { S.dialog.state = "err"; S.dialog.err = COMBO_MSG[err.message] || "Commander Spellbook didn't answer properly. Try again in a minute."; renderDialog(); }
   }
 }
@@ -824,7 +847,7 @@ function cloudInit() {
       catch { db = fsM.getFirestore(app); }
       CLOUD.api = { authM, fsM, auth, db };
       authM.onAuthStateChanged(auth, user => { onUser(user); done(); });
-    }).catch(err => { CLOUD.failed = true; CLOUD.err = String(err && (err.code || err.message) || err || "unknown error").slice(0, 200); done(); safeRender(); });
+    }).catch(err => { CLOUD.failed = true; CLOUD.err = String(err && (err.code || err.message) || err || "unknown error").slice(0, 200); reportError("sync", "Firebase didn't load: " + CLOUD.err, isStandalone() ? "installed app" : "browser"); done(); safeRender(); });
   });
 }
 function stopCloud() { CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = []; synced.clear(); syncedBinRev = 0; CLOUD.loaded = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = false; }
@@ -871,6 +894,7 @@ function onUser(user) {
 }
 function cloudError(err) {
   const code = err && err.code || "";
+  reportError("sync", "Sync error: " + (code || (err && err.message) || err), "sync");
   toast(code === "permission-denied" ? "Your account's data couldn't be read. Firebase's security rules may not be set up yet." : "Lost the connection to your account. Changes are kept and will sync when it's back.");
 }
 // The first time someone signs in on a browser, decks saved there move into their account.
@@ -927,6 +951,7 @@ async function signIn() {
     const code = e && e.code || "";
     if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") { try { await authM.signInWithRedirect(auth, provider); } catch {} return; }
     if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+    reportError("sign-in", code || (e && e.message) || "sign-in failed", isStandalone() ? "installed app" : "browser");
     toast(code === "auth/unauthorized-domain" ? "This website isn't on Firebase's list of authorized domains yet." : code === "auth/network-request-failed" ? "Couldn't reach Google. Check your connection and try again." : `Couldn't sign in${code ? " (" + code + ")" : ""}. Try again.`);
   }
 }

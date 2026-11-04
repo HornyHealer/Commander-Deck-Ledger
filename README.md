@@ -89,6 +89,12 @@ The site can be installed as an app (`manifest.webmanifest`, `icons/`). The brow
 
 Every day at 15:41 UTC, `.github/workflows/health.yml` opens the live site in a real browser (`tests/live/health.spec.js`) and checks that: the site and card list load; Firebase loads and still lists the site as an authorized sign-in domain; the database is up and refuses anyone not signed in; Archidekt Fetch works; and the combo finder works. If anything fails it opens a GitHub issue labeled `health-check` (so GitHub emails you) and comments on it each day it's still broken; it closes the issue by itself once a check passes. Run it any time from the Actions tab → **Daily health check** → **Run workflow**. Tick **practice failure** there to see what an alert looks like; the next normal run closes it.
 
+## Error reports
+
+When something goes wrong in a visitor's browser on the real site (a crash, Firebase not loading, a sign-in or sync error, the Archidekt import or combo finder failing unexpectedly), the site sends a short report to the Cloudflare Worker: the error message, where it happened, the page, the browser, whether it's the installed app or signed in, and the site version. Never deck contents, names or emails. At most 5 per visit, each error once. The Worker keeps them for 30 days in a small database that's part of Cloudflare's free plan (`worker/src/reports.mjs`), counting repeats of the same error.
+
+The daily health check collects new reports (`scripts/error-reports.mjs`) and posts them as a table on the **Error reports from the site** issue, so GitHub emails you; quiet days post nothing. The Worker only hands reports to this repo's own workflow, which proves who it is with GitHub's signed token, so there's no password to manage. Close the issue once you've read it; a new one opens with the next reports. Ticking **practice failure** on a manual run also sends one practice report.
+
 ## Running the tests on your computer
 
 ```

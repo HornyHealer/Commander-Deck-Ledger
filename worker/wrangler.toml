@@ -4,3 +4,12 @@ name = "cdl-archidekt"
 main = "src/index.mjs"
 compatibility_date = "2026-09-01"
 workers_dev = true
+
+# Error reports from the site (src/reports.mjs): a small SQLite database in a Durable Object, part of the free plan.
+[[durable_objects.bindings]]
+name = "REPORTS"
+class_name = "Reports"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Reports"]

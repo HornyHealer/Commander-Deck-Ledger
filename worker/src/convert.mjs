@@ -69,3 +69,26 @@ export function trimCombos(data, deck) {
   const almost = allAlmost.map(one).map(c => ({ ...c, missing: c.cards.filter(n => !owned(n)) })).sort(byPop).slice(0, 40);
   return { included, almost, almostTotal: allAlmost.length };
 }
+
+// ---------- error reports ----------
+// Keeps only short, plain fields from a browser's error report; nothing about decks or people.
+export function cleanReport(body) {
+  const str = (v, n) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, n) : "");
+  const r = {
+    kind: str(body && body.kind, 40) || "error",
+    message: str(body && body.message, 300),
+    where: str(body && body.where, 160),
+    view: str(body && body.view, 20),
+    browser: str(body && body.browser, 200),
+    app: !!(body && body.app),
+    signedIn: !!(body && body.signedIn),
+    version: str(body && body.version, 20),
+  };
+  return r.message ? r : null;
+}
+// Same error on the same day shares one record (with a count), so repeats don't fill the storage.
+export function reportKey(r, day) {
+  let h = 5381; const s = r.kind + "|" + r.message + "|" + r.where;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return `err:${day}:${h.toString(36)}`;
+}

@@ -1,6 +1,7 @@
 # Daily health check: opens the live site in a real browser and tests what people rely on (card list,
 # sign-in setup, database privacy, Archidekt Fetch, combo finder). If anything fails it opens a GitHub
-# issue labeled "health-check" (GitHub emails you) and closes it once a later check passes.
+# issue labeled "health-check" (GitHub emails you) and closes it once a later check passes. It also posts any
+# new error reports the site sent in (scripts/error-reports.mjs) to the "Error reports" issue.
 # Run it by hand: Actions tab → "Daily health check" → Run workflow.
 name: Daily health check
 
@@ -10,13 +11,14 @@ on:
   workflow_dispatch:
     inputs:
       practice_failure:
-        description: 'Make one check fail on purpose, to see the alert issue and email'
+        description: 'Make one check fail and send one error report on purpose, to see the alerts and emails'
         type: boolean
         default: false
 
 permissions:
   contents: read
   issues: write
+  id-token: write # lets the run prove to the Cloudflare Worker that it's this repo, to collect error reports
 
 jobs:
   check:
@@ -36,6 +38,17 @@ jobs:
         run: npx playwright test -c playwright.live.config.js
         env:
           PRACTICE_FAILURE: ${{ inputs.practice_failure && '1' || '' }}
+      - name: Send a practice error report
+        if: inputs.practice_failure
+        run: |
+          curl -sS -X POST -H "Origin: https://hornyhealer.github.io" -H "Content-Type: application/json" \
+            --data '{"kind":"practice","message":"Practice error report (started on purpose from the health check)","where":"health check","view":"-","browser":"GitHub Actions"}' \
+            https://cdl-archidekt.deckledger.workers.dev/report
+      - name: Post new error reports from the site
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/error-reports.mjs
       - name: Report (open, update or close the health-check issue)
         env:
           GH_TOKEN: ${{ github.token }}
