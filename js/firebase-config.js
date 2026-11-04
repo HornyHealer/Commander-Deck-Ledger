@@ -9,5 +9,5 @@ window.LEDGER_FIREBASE = {
   messagingSenderId: "831324727624",
   appId: "1:831324727624:web:c15489786ded7ee8732b7d",
   // reCAPTCHA key for App Check (public, like the values above). Empty means App Check is off.
-  appCheckKey: "",
+  appCheckKey: "6LeTlhAuAAAAAIDvZMQ3vRw36HiyhfsV4LA-sUJh",
 };
