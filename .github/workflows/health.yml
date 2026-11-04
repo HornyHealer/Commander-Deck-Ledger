@@ -1,0 +1,42 @@
+# Daily health check: opens the live site in a real browser and tests what people rely on (card list,
+# sign-in setup, database privacy, Archidekt Fetch, combo finder). If anything fails it opens a GitHub
+# issue labeled "health-check" (GitHub emails you) and closes it once a later check passes.
+# Run it by hand: Actions tab → "Daily health check" → Run workflow.
+name: Daily health check
+
+on:
+  schedule:
+    - cron: '41 15 * * *' # every day, 15:41 UTC (7:41 am Pacific in winter, 8:41 in summer)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Check the live site
+        id: run
+        continue-on-error: true
+        run: npx playwright test -c playwright.live.config.js
+      - name: Report (open, update or close the health-check issue)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/health-report.mjs
+      - name: Save the details if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-check-report
+          path: test-results
+          retention-days: 7

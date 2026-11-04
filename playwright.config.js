@@ -4,6 +4,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: 'tests',
+  testIgnore: 'live/**', // the daily check of the live site has its own settings (playwright.live.config.js)
   timeout: 30000,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
