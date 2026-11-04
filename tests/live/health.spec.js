@@ -62,3 +62,9 @@ test('the combo finder works from the site', async ({ page }) => {
   await page.click('[data-act="combos"]');
   await expect(page.locator('.dialog .cb-sec h3').first()).toContainText('In this deck', { timeout: 30000 });
 });
+
+// Only runs when the workflow is started with "practice failure" ticked, to try out the alert.
+test('practice failure (started on purpose to test the alert)', async () => {
+  test.skip(!process.env.PRACTICE_FAILURE, 'only when practicing');
+  expect(false, 'this check fails on purpose; the next normal run closes the issue').toBe(true);
+});

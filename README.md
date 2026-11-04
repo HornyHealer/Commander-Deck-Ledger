@@ -87,7 +87,7 @@ The site can be installed as an app (`manifest.webmanifest`, `icons/`). The brow
 
 ## Daily health check
 
-Every day at 15:41 UTC, `.github/workflows/health.yml` opens the live site in a real browser (`tests/live/health.spec.js`) and checks that: the site and card list load; Firebase loads and still lists the site as an authorized sign-in domain; the database is up and refuses anyone not signed in; Archidekt Fetch works; and the combo finder works. If anything fails it opens a GitHub issue labeled `health-check` (so GitHub emails you) and comments on it each day it's still broken; it closes the issue by itself once a check passes. Run it any time from the Actions tab → **Daily health check** → **Run workflow**.
+Every day at 15:41 UTC, `.github/workflows/health.yml` opens the live site in a real browser (`tests/live/health.spec.js`) and checks that: the site and card list load; Firebase loads and still lists the site as an authorized sign-in domain; the database is up and refuses anyone not signed in; Archidekt Fetch works; and the combo finder works. If anything fails it opens a GitHub issue labeled `health-check` (so GitHub emails you) and comments on it each day it's still broken; it closes the issue by itself once a check passes. Run it any time from the Actions tab → **Daily health check** → **Run workflow**. Tick **practice failure** there to see what an alert looks like; the next normal run closes it.
 
 ## Running the tests on your computer
 

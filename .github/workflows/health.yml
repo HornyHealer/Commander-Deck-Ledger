@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '41 15 * * *' # every day, 15:41 UTC (7:41 am Pacific in winter, 8:41 in summer)
   workflow_dispatch:
+    inputs:
+      practice_failure:
+        description: 'Make one check fail on purpose, to see the alert issue and email'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,6 +34,8 @@ jobs:
         id: run
         continue-on-error: true
         run: npx playwright test -c playwright.live.config.js
+        env:
+          PRACTICE_FAILURE: ${{ inputs.practice_failure && '1' || '' }}
       - name: Report (open, update or close the health-check issue)
         env:
           GH_TOKEN: ${{ github.token }}
