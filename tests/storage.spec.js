@@ -246,3 +246,28 @@ test('a bin saved in 10 sections regroups into 5', async ({ page }) => {
   expect(pieceKeys(s, 'users/u-test/bin/')).toHaveLength(5);
   expect(binCards(s)).toHaveLength(300);
 });
+
+// ---- Limits (match firestore.rules) ----
+test('a deck over 500 different cards shows a warning instead of saving, and saves again once trimmed', async ({ page }) => {
+  const acct = oldAccount();
+  const rats = acct[DECKS + 'fixture-rats'];
+  // 502: Typhoid Rats isn't owned, so it moves to incoming when the deck loads, leaving 501.
+  const extra = Array.from({ length: 502 - rats.cur.length }, (_, k) => ({ n: 'Test Card ' + k, q: 1 }));
+  rats.cur.push(...clone(extra)); rats.printed.push(...extra.map(c => ({ n: c.n, q: 1, at: 1761000000000, o: 1 })));
+  await openWith(page, acct);
+  await expect.poll(async () => newLayout(await fakeStore(page))).toBe(false);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await page.click('[data-act="edit"]');
+  await page.fill('#e-name', 'Too Many Rats');
+  await page.click('[data-dlg="save-edit"]');
+  await expect(page.locator('.limit-warn')).toContainText('Too Many Rats has 501 different cards');
+  await expect(page.locator('#sync-status')).toHaveText('Not saved');
+  await page.waitForTimeout(800);
+  expect((await fakeStore(page))[DECKS + 'fixture-rats'].name).toBe('Rat Pack');
+  // Cutting one card brings it back under the limit.
+  await page.click('[data-cut="Test Card 0"]');
+  await page.click('[data-act="commit"]');
+  await expect(page.locator('.limit-warn')).toHaveCount(0);
+  await expect.poll(async () => (await fakeStore(page))[DECKS + 'fixture-rats'].name).toBe('Too Many Rats');
+  await expect(page.locator('#sync-status')).toHaveText('Synced');
+});

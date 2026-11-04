@@ -1,5 +1,5 @@
 # 1. Weekly (and on request) rebuilds the card list from Scryfall and commits it if anything changed.
-# 2. Runs the automatic tests on every change.
+# 2. Runs the automatic tests on every change, and tests the database rules on Firebase's emulator.
 # 3. Publishes the site to GitHub Pages only when the tests pass on the main branch.
 #
 # To rebuild the card list right away: Actions tab → "Test and deploy" → Run workflow,
@@ -72,9 +72,27 @@ jobs:
           path: playwright-report
           retention-days: 7
 
+  # Checks firestore.rules (the database's security rules and size limits) against Firebase's own emulator.
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install the rules testing tools
+        run: npm install --no-save --no-package-lock firebase-tools@15.34.2 @firebase/rules-unit-testing@6.0.0 firebase@13.2.0
+      - name: Test the database rules
+        run: npx firebase emulators:exec --only firestore --project demo-cdl "node --test tests/db-rules/rules.test.mjs"
+
   deploy:
-    needs: test
-    if: always() && needs.test.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [test, rules]
+    if: always() && needs.test.result == 'success' && needs.rules.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

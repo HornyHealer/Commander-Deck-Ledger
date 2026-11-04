@@ -4,7 +4,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: 'tests',
-  testIgnore: 'live/**', // the daily check of the live site has its own settings (playwright.live.config.js)
+  testIgnore: ['live/**', 'db-rules/**'], // the live check has its own settings (playwright.live.config.js); db-rules runs on Firebase's emulator
   timeout: 30000,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',

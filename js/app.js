@@ -958,7 +958,7 @@ function stopCloud() {
   CLOUD.unsubs.forEach(u => { try { u(); } catch {} }); CLOUD.unsubs = [];
   for (const o of PIECES.values()) { try { if (o.unsub) o.unsub(); } catch {} }
   PIECES.clear(); oldFormat.clear(); synced.clear(); syncedBinRev = 0;
-  histInfo.clear(); for (const id of [...histWaiters.keys()]) histDone(id, false);
+  histInfo.clear(); blocked.clear(); for (const id of [...histWaiters.keys()]) histDone(id, false);
   CLOUD.loaded = CLOUD.decksSeen = CLOUD.serverDecks = CLOUD.serverBin = CLOUD.migrated = CLOUD.binTaken = CLOUD.binOld = false;
 }
 const oldFormat = new Set(); // decks to save again in the current layout once the server has answered
@@ -1110,13 +1110,41 @@ function cloudWrite(promise) {
   CLOUD.pending++; updateSyncChip();
   promise.catch(err => cloudError(err)).finally(() => { CLOUD.pending = Math.max(0, CLOUD.pending - 1); updateSyncChip(); });
 }
+// The account's limits, matching firestore.rules. Far above normal use; a record over one isn't saved and a
+// warning says what to trim.
+const LIMITS = { cur: 500, printed: 2000, pieces: 40, waiting: 2000, bin: 30000, binPart: 7000 };
+const blocked = new Map(); // "d:<id>" or "bin" -> what's over the limit
+function setBlocked(key, why) {
+  if ((blocked.get(key) || "") === why) return;
+  if (why) blocked.set(key, why); else blocked.delete(key);
+  updateSyncChip(); safeRender();
+}
+function deckOver(d, pieces) {
+  const nm = `<b>${esc(d.name)}</b>`;
+  if (d.cur.length > LIMITS.cur) return `${nm} has ${d.cur.length} different cards in its list. A deck can hold up to ${LIMITS.cur}, so remove some to save it again.`;
+  if ((d.orig || []).length > LIMITS.cur) return `${nm}'s original list has ${d.orig.length} different cards; a deck can hold up to ${LIMITS.cur}.`;
+  if (d.printed.length > LIMITS.printed) return `${nm} has ${d.printed.length} different owned cards. A deck can keep up to ${LIMITS.printed.toLocaleString()}, so take some off its owned list to save it again.`;
+  if (pieces && pieces.length > LIMITS.pieces) return `${nm}'s history is longer than an account can hold (about 20,000 changes). Export a backup, then start a fresh copy of the deck from its current list.`;
+  return "";
+}
+function binOver(parts) {
+  const n = (S.loose.cards || []).length;
+  if (n > LIMITS.bin || parts.some(p => p.length > LIMITS.binPart)) return `Your card bin has ${n.toLocaleString()} entries. It can hold up to ${LIMITS.bin.toLocaleString()}, so remove some to save it again.`;
+  return "";
+}
 function cloudFlush() {
   if (!CLOUD.user || !CLOUD.api) return;
   const { fsM, db } = CLOUD.api; const uid = CLOUD.user.uid;
   for (const d of S.decks.values()) {
     if (synced.has(d.id) && synced.get(d.id) === (d.rev || 0)) continue;
+    const lazy = !historyReady(d.id);
+    // Lots of changes waiting in an unopened deck: read its history so they can be filed into it.
+    if (lazy && d.log.length > LIMITS.waiting / 2) { ensureHistory(d.id).then(() => persist()); continue; }
+    const pieces = lazy ? null : packHistory(d.log || []);
+    const why = deckOver(d, pieces); setBlocked("d:" + d.id, why);
+    if (why) continue;
     synced.set(d.id, d.rev || 0);
-    if (!historyReady(d.id)) {
+    if (lazy) {
       // History not read here: keep the saved pieces and put this device's new entries in the deck record.
       const info = histInfo.get(d.id);
       cloudWrite(fsM.setDoc(fsM.doc(db, "users", uid, "decks", d.id), forCloud(Object.assign({}, d, { fmt: 2, hist: { sigs: info.sigs, changes: info.changes } }))));
@@ -1124,29 +1152,33 @@ function cloudFlush() {
     }
     // The deck and its new history pieces are saved together, so other devices never see one without the other.
     const b = fsM.writeBatch(db);
-    const sigs = writePieces(b, "d:" + d.id, packHistory(d.log || []));
+    const sigs = writePieces(b, "d:" + d.id, pieces);
     const body = Object.assign({}, d, { fmt: 2, hist: { sigs, changes: d.log.filter(isChange).length } }); delete body.log;
     b.set(fsM.doc(db, "users", uid, "decks", d.id), forCloud(body));
     cloudWrite(b.commit());
   }
   for (const id of [...synced.keys()]) if (!S.decks.has(id)) {
-    synced.delete(id); histInfo.delete(id); histDone(id, false); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id)));
+    synced.delete(id); histInfo.delete(id); histDone(id, false); setBlocked("d:" + id, ""); cloudWrite(fsM.deleteDoc(fsM.doc(db, "users", uid, "decks", id)));
     watchPieces("d:" + id); clearPieces("d:" + id);
   }
   if ((S.loose.rev || 0) !== syncedBinRev) {
+    const parts = splitBin(S.loose.cards || []);
+    const why = binOver(parts); setBlocked("bin", why);
+    if (why) return;
     syncedBinRev = S.loose.rev || 0; CLOUD.binTaken = true;
     const b = fsM.writeBatch(db);
-    const sigs = writePieces(b, "bin", splitBin(S.loose.cards || []));
+    const sigs = writePieces(b, "bin", parts);
     // "cards" stays as an empty list so an older copy of the site still open somewhere doesn't mistake the bin for missing.
     b.set(CLOUD.binRef, { rev: S.loose.rev || 0, fmt: 2, sigs, cards: [] });
     cloudWrite(b.commit());
   }
 }
 function syncText() {
+  if (blocked.size) return "Not saved";
   if (!CLOUD.pending) return "Synced";
   return navigator.onLine === false ? `Offline · ${CLOUD.pending} waiting` : "Saving…";
 }
-function updateSyncChip() { const el = $("#sync-status"); if (el) { el.textContent = syncText(); el.classList.toggle("busy", CLOUD.pending > 0); } }
+function updateSyncChip() { const el = $("#sync-status"); if (el) { el.textContent = syncText(); el.classList.toggle("busy", CLOUD.pending > 0 || blocked.size > 0); } }
 window.addEventListener("online", updateSyncChip); window.addEventListener("offline", updateSyncChip);
 async function signIn() {
   if (!CLOUD.api) return toast("Sign-in isn't available right now. Check your connection and reload.");
@@ -1312,6 +1344,7 @@ function render() {
   html += `<div class="topacts">${accountHtml()}<button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button><button class="btn${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}Check a list</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
+  if (CLOUD.user) for (const why of blocked.values()) html += `<div class="backup-warn limit-warn" role="alert"><span><b>Not saved to your account.</b> ${why} Until then, changes to it are only on this screen and are lost if you close the site.</span></div>`;
   if (CLOUD.enabled && CLOUD.authReady && !CLOUD.user && !CLOUD.failed && S.view === "library") html += `<div class="signin-note"><div><b>Sync your decks</b> Sign in with Google to keep your decks in step between your phone and computer.${S.decks.size || (S.loose.cards || []).length ? " The decks saved in this browser move into your account the first time you sign in." : ""}</div><button class="btn primary" data-act="signin">${ICONS.user}Sign in with Google</button></div>`;
   if (S.ready && !S.live && !CLOUD.user) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;
   const d = S.deckId && S.decks.get(S.deckId);
