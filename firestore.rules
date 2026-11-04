@@ -1,10 +1,41 @@
 rules_version = '2';
 // Paste into Firebase console → Firestore Database → Rules, then Publish.
-// Each signed-in person can read and write only their own decks and card bin.
+// Each signed-in person can read and write only their own decks and card bin, only in the places the
+// site uses, and only up to these limits (far above normal use; the site warns before anyone gets close):
+//   a deck's current list   500 different cards        a deck's owned list   2,000 different cards
+//   a deck's history        40 pieces of up to 500 changes (about 20,000 changes)
+//   the card bin            5 sections of up to 7,000 entries (the site stops at 30,000 in all)
+// Tested on every change by tests/db-rules (run on GitHub against Firebase's own rules emulator).
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    // An optional list field, no longer than n.
+    function listUpTo(m, key, n) { return m.get(key, []) is list && m.get(key, []).size() <= n; }
+    function deckOK(d) {
+      return d.cur is list && d.cur.size() <= 500
+        && listUpTo(d, 'orig', 500) && listUpTo(d, 'printed', 2000)
+        && listUpTo(d, 'log', 2000) // changes made before the deck's history was read, waiting to be folded in
+        && d.get('hist', {}) is map && listUpTo(d.get('hist', {}), 'sigs', 40);
     }
+    function pieceOK(p, n) { return p.keys().hasOnly(['p']) && p.p is list && p.p.size() <= n; }
+    function binOK(m) { return listUpTo(m, 'sigs', 5) && listUpTo(m, 'cards', 1000); }
+
+    match /users/{uid}/decks/{deck} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && deckOK(request.resource.data);
+      match /history/{piece} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid) && pieceOK(request.resource.data, 500);
+      }
+    }
+    match /users/{uid}/meta/bin {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && binOK(request.resource.data);
+    }
+    match /users/{uid}/bin/{piece} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && pieceOK(request.resource.data, 7000);
+    }
+    // Anything else is refused, so an account can't be used to store other things.
   }
 }
