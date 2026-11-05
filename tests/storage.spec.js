@@ -258,7 +258,8 @@ test('a deck over 500 different cards shows a warning instead of saving, and sav
   await expect.poll(async () => newLayout(await fakeStore(page))).toBe(false);
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
   await page.click('[data-act="edit"]');
-  await page.fill('#e-name', 'Too Many Rats');
+  // The popup redraws when its artwork lookup finishes; if that lands mid-typing, type again.
+  await expect(async () => { await page.fill('#e-name', 'Too Many Rats'); await expect(page.locator('#e-name')).toHaveValue('Too Many Rats', { timeout: 500 }); }).toPass();
   await page.click('[data-dlg="save-edit"]');
   await expect(page.locator('.limit-warn')).toContainText('Too Many Rats has 501 different cards');
   await expect(page.locator('#sync-status')).toHaveText('Not saved');
