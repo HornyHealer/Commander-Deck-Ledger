@@ -94,6 +94,13 @@ Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text b
 
 The site opens on a dark "Defragmenting" screen (in `index.html`, so it shows before any code loads) that stays until the decks are in, for at least about a second. It then breaks into dark blocks that drop out while the page glitches in. Switching views, opening a popup and each card image finishing loading play a short Marathon-style glitch: blocks dropping out in random order, red and cyan copies cut into horizontal slices sliding together, and scan lines (`playGlitch` and `glitchImage` in `js/app.js`). All of it is skipped on devices set to reduce motion, and the automatic tests run with reduced motion except `tests/motion.spec.js`, which tests the effects.
 
+## Backdrop, light/dark and the top bar
+
+- **Backdrop** (`js/backdrop.js`): a canvas behind the page inside a console frame, at a quiet strength: a grid of squares with a slow wave of lighter and darker squares rolling from the bottom right to the top left, chip blocks and traces with a braided band and short "weave worms" crawling along them, and terminal readouts that type out fresh text (using your deck names) over faint rails. On wide screens the readouts sit in the side margins; otherwise one runs low on the left and only shows where the page isn't. It redraws 20 times a second, stops while the tab is hidden, and draws one still frame with reduced motion. Its colours are the `--bd-*` tokens in `css/style.css`.
+- **Light and dark**: the switch in the top bar overrides the device setting and is remembered in that browser (`cdl-theme`); `index.html` applies it before the page draws. Light mode uses white, lilac purple, mint teal and black (after the Sekiguchi Genetics palette); its glitch effects split into purple and teal instead of red and cyan.
+- **Phones**: the top bar is one even row of icon buttons with short labels.
+- **Card bin**: folded away under its heading so the decks are the focus; opening it is remembered (`cdl-bin-open`). The tests start with it open.
+
 ## Publishing
 
 Every push to `main` runs the automatic tests on GitHub. The site is published to GitHub Pages only if they pass. See `.github/workflows/test-and-deploy.yml`.

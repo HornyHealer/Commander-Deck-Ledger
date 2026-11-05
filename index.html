@@ -18,8 +18,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,400;100,500;100,600;125,700;125,800&family=Michroma&family=Martian+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="css/style.css">
+<script>
+// Apply a saved light/dark choice before the page draws (the switch is in the top bar).
+try { var t = localStorage.getItem("cdl-theme"); if (t === "dark" || t === "light") { document.documentElement.dataset.theme = t; document.querySelector('meta[name="theme-color"]').content = t === "dark" ? "#0b0b0a" : "#efeef7"; } } catch (e) {}
+</script>
 <script src="js/firebase-config.js" defer></script>
 <script src="js/card-rules.js" defer></script>
+<script src="js/backdrop.js" defer></script>
 <script src="js/app.js" defer></script>
 </head>
 <body>

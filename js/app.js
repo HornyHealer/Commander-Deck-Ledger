@@ -66,6 +66,9 @@ const deckLink = ref => { if (!ref) return ""; const dk = ref.id ? S.decks.get(r
 const MANA_ORDER = "WUBRG";
 
 const ICONS = {
+  sun: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="5" height="5"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.6 1.6M11.4 11.4 13 13M13 3l-1.6 1.6M4.6 11.4 3 13"/></svg>',
+  moon: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 2.5h-3v2h-2v2h-2v3h2v2h2v2h3v-2h-2v-2h-2v-3h2v-2h2z"/></svg>',
+  chev: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 6 4 4 4-4"/></svg>',
   back: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg>',
   cut: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4.5" r="2"/><circle cx="4" cy="11.5" r="2"/><path d="M5.6 5.6 14 12M5.6 10.4 14 4"/></svg>',
   ext: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V13H3V5h3.5"/></svg>',
@@ -137,7 +140,7 @@ function parseList(text) {
 
 // ---------- state ----------
 let SORT0 = "cost"; try { SORT0 = localStorage.getItem("ledger-sort") || "cost"; } catch {}
-const S = { sort: SORT0, loose: { cards: [] }, decks: new Map(), view: "library", deckId: null, tab: "current", filter: "", printedFilter: "all", db: null, col: null, live: false, ready: false, confirm: null, dialog: null };
+const S = { binOpen: (() => { try { return localStorage.getItem("cdl-bin-open") === "1"; } catch { return false; } })(), sort: SORT0, loose: { cards: [] }, decks: new Map(), view: "library", deckId: null, tab: "current", filter: "", printedFilter: "all", db: null, col: null, live: false, ready: false, confirm: null, dialog: null };
 
 // ---------- error reports ----------
 // When something goes wrong in a visitor's browser, a short report goes to the Cloudflare Worker: the error
@@ -1353,7 +1356,14 @@ function fromHash() { if (location.hash === "#all-cards") { S.view = "all"; retu
 function render() {
   const app = $("#app");
   let html = `<div class="top"><div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>`;
-  html += `<div class="topacts">${accountHtml()}<button class="btn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}All cards</button><button class="btn${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}Check a list</button>${S.view === "library" ? `<button class="btn primary" data-act="new">${ICONS.plus}New deck</button>` : ""}</div>`;
+  const lbl = (long, short) => `<span class="lbl">${long}</span><span class="lbl-s">${short}</span>`;
+  const dark = themeNow() === "dark";
+  html += `<div class="topacts">${accountHtml()}`
+    + `<button class="btn tb${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}${lbl("All cards", "Cards")}</button>`
+    + `<button class="btn tb${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}${lbl("Check a list", "Check")}</button>`
+    + `<button class="btn tb theme" data-act="theme" aria-label="Switch to ${dark ? "light" : "dark"} mode" title="Switch to ${dark ? "light" : "dark"} mode">${dark ? ICONS.sun : ICONS.moon}${lbl(dark ? "Light" : "Dark", dark ? "Light" : "Dark")}</button>`
+    + (S.view === "library" ? `<button class="btn tb primary" data-act="new">${ICONS.plus}${lbl("New deck", "New")}</button>` : "")
+    + `</div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
   if (CLOUD.user) for (const why of blocked.values()) html += `<div class="backup-warn limit-warn" role="alert"><span><b>Not saved to your account.</b> ${why} Until then, changes to it are only on this screen and are lost if you close the site.</span></div>`;
@@ -1373,10 +1383,24 @@ function render() {
   else html += renderLibrary();
   html += `</div><footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
+  if (S.ready && window.LedgerBackdrop) window.LedgerBackdrop.setDecks([...S.decks.values()].map(x => x.name));
   if (S.ready && (!CLOUD.user || CLOUD.loaded)) revealBoot();
   if (glitch) queueMicrotask(() => playGlitch($(".view"))); // after go() has scrolled back to the top
   if (S.dialog) renderDialog();
 }
+// ---------- light and dark ----------
+// Follows the device until the switch in the top bar is used; then the choice is remembered in this browser.
+// (index.html applies a saved choice before the page draws, so it never flashes the other theme.)
+function themeNow() { const t = document.documentElement.dataset.theme; return t === "dark" || t === "light" ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("cdl-theme", t); } catch {}
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = t === "dark" ? "#0b0b0a" : "#efeef7";
+  if (window.LedgerBackdrop) window.LedgerBackdrop.refresh();
+  render();
+  if (!reduceMotion()) playGlitch($(".view"));
+}
+
 // ---------- glitch transitions (Marathon-style) ----------
 // Views, popups and card images arrive as fragments: blocks that drop out in random order (like the Marathon
 // loading moth), red and cyan copies cut into horizontal slices that slide together and lock onto the real
@@ -1394,7 +1418,10 @@ function vfxFilters() {
   svg.style.position = "absolute";
   // Keep only the red channel, or only green and blue (cyan).
   svg.innerHTML = '<filter id="vfx-r" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>'
-    + '<filter id="vfx-c" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>';
+    + '<filter id="vfx-c" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>'
+    // light mode: purple (red and blue) and teal (green, some blue)
+    + '<filter id="vfx-p" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=".7 0 0 0 0  0 .45 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>'
+    + '<filter id="vfx-t" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 .75 0 0  0 0 0 1 0"/></filter>';
   document.body.appendChild(svg);
 }
 // A clip-path made of several horizontal bands (percent of the height).
@@ -1424,7 +1451,7 @@ function realFrames(shift, jitter, split) {
     const t = i / 8, x = (vfxRnd(-1, 1) * jitter * (1 - t)).toFixed(1);
     const k = { offset: .15 + t * .7, opacity: 1, clipPath: bandsClip(Math.round(vfxRnd(3, 6)), .5 + t * .5), ...VFX_STEP };
     if (shift === "left") k.left = x + "px"; else k.transform = `translateX(${x}px)`;
-    if (split) k.textShadow = `${(3 * (1 - t) + 1).toFixed(1)}px 0 var(--hot), ${(-3 * (1 - t) - 1).toFixed(1)}px 0 var(--cyan)`;
+    if (split) k.textShadow = `${(3 * (1 - t) + 1).toFixed(1)}px 0 var(--split-a), ${(-3 * (1 - t) - 1).toFixed(1)}px 0 var(--split-b)`;
     f.push(k);
   }
   const end = { offset: 1, opacity: 1, clipPath: "inset(0 0 0 0)" };
@@ -1723,7 +1750,14 @@ function applyImport(dl) {
 function renderBin() {
   const rows = binRows(); const tot = rows.reduce((a, r) => a + r.total, 0); const f = norm(S.binFilter || "");
   const addBtn = `<button class="btn sm primary" data-act="bin-add">${ICONS.plus}Add cards</button>`;
-  let h = `<section class="bin"><div class="bin-head"><div><h2>Card bin <span class="mono muted" style="font-size:15px">${tot}</span></h2><p class="muted">Cards you own that aren't in any deck's current list.</p></div>`;
+  // The bin folds away (closed unless opened here before) so the decks stay the focus.
+  const open = !!S.binOpen;
+  const fold = `<button class="bin-fold" data-act="bin-fold" aria-expanded="${open}"><h2>Card bin <span class="mono muted" style="font-size:15px">${tot}</span></h2><span class="chev">${ICONS.chev}</span></button>`;
+  let h = `<section class="bin${open ? "" : " folded"}"><div class="bin-head"><div>${fold}<p class="muted">Cards you own that aren't in any deck's current list.</p></div>`;
+  if (!open) {
+    const needed = rows.filter(r => r.needs.length).length;
+    return h + (needed ? `<span class="flag good bin-needed">${needed} needed by an incoming change</span>` : "") + `</div></section>`;
+  }
   if (!rows.length) return h + `<div class="bin-tools">${addBtn}</div></div><p class="muted bin-empty">Empty. When you cut a card you own, it lands here. You can also add cards you have lying around.</p></section>`;
   const needed = rows.filter(r => r.needs.length).length;
   h += `<div class="bin-tools"><input class="field" id="f-bin" type="search" placeholder="Find a card in the bin" value="${esc(S.binFilter || "")}" aria-label="Find a card in the bin"><button class="btn sm" data-act="copy-bin">${ICONS.copy}Copy list</button>${addBtn}</div></div>`;
@@ -2483,6 +2517,8 @@ document.addEventListener("click", e => {
     return;
   }
   if (act === "all") { S.allFilter = ""; return go("all"); }
+  if (act === "theme") return setTheme(themeNow() === "dark" ? "light" : "dark");
+  if (act === "bin-fold") { S.binOpen = !S.binOpen; try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
