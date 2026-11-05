@@ -4,14 +4,17 @@ const { test, expect } = require('@playwright/test');
 test.beforeEach(async ({ page, context }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' }); // the other tests run with reduced motion
   await context.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+  // No accounts here, so the page is ready without waiting on Google's servers.
+  await context.route('**/js/firebase-config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.LEDGER_FIREBASE = null;' }));
   await context.route(/scryfall\.(com|io)/, r => r.fulfill({ status: 404, body: '' }));
 });
 
 test('switching views plays a short glitch, then cleans up after itself', async ({ page }) => {
   await page.goto('/');
+  // Wait out the loading screen's own glitch (tested below).
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
   await expect(page.locator('.view')).toHaveCount(1);
-  await page.waitForTimeout(300);
-  await expect(page.locator('.vfx')).toHaveCount(0); // not on first load
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await expect(page.locator('.vfx.v')).toHaveCount(1);
   await expect(page.locator('.vfx-ghosts .vfx-ghost')).toHaveCount(2); // the red and cyan copies
@@ -39,6 +42,7 @@ test('no glitch when the device is set to reduce motion @phone', async ({ page }
 
 test('popups glitch in when they open, and the pieces go when they close', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 5000 });
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
   await page.click('[data-act="edit"]');
@@ -59,6 +63,7 @@ test('a card image glitches in as it loads', async ({ page, context }, info) => 
   const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
   await context.route(/scryfall\.(com|io)/, r => r.fulfill({ body: PNG, contentType: 'image/png' }));
   await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 5000 });
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
   const name = page.locator('#app .row .nm > span:first-child').nth(2);
@@ -71,4 +76,22 @@ test('a card image glitches in as it loads', async ({ page, context }, info) => 
   }).toPass({ timeout: 10000 });
   await expect(page.locator('.cardpv .vfx-img')).toHaveCount(0, { timeout: 2000 });
   await expect(page.locator('.cardpv img').first()).toBeVisible();
+});
+
+test('the site opens on "Defragmenting", which breaks apart into the page once it has loaded @phone', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#boot')).toContainText('DEFRAGMENTING');
+  await expect(page.locator('#boot .boot-map i')).toHaveCount(96);
+  await expect(page.locator('#boot.boot-gone .boot-tiles')).toHaveCount(1, { timeout: 5000 }); // the dark blocks
+  await expect(page.locator('.vfx.v')).toHaveCount(1); // and the page glitching in
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 2000 });
+  await page.getByRole('button', { name: 'Try an example deck' }).click();
+  await expect(page.locator('#app .dhead')).toBeVisible();
+});
+
+test('with reduced motion the loading screen just goes once the page is ready', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0);
+  await expect(page.locator('.vfx, .boot-tiles')).toHaveCount(0);
 });

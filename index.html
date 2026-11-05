@@ -23,6 +23,23 @@
 <script src="js/app.js" defer></script>
 </head>
 <body>
+<!-- Loading screen: shown the moment the page opens, removed with a glitch by js/app.js once the decks are in. -->
+<div id="boot" role="status" aria-label="Loading your decks">
+  <div class="boot-in">
+    <div class="boot-map" aria-hidden="true"></div>
+    <div class="boot-t" data-text="DEFRAGMENTING" aria-hidden="true">DEFRAGMENTING</div>
+    <div class="boot-s" aria-hidden="true"><span>Commander Deck Ledger</span><span class="boot-n">Restoring sectors</span></div>
+  </div>
+</div>
+<script>
+// Fills the defrag map with scattered fragments, and never leaves the screen up if the site fails to start.
+(function () {
+  var m = document.querySelector(".boot-map"), h = "", c = ["f1", "f2", "f3", "f0", "f0", "f0"];
+  for (var k = 0; k < 96; k++) h += '<i class="' + c[Math.floor(Math.random() * c.length)] + '" style="--d:' + (k * 14 + Math.floor(Math.random() * 60)) + 'ms"></i>';
+  m.innerHTML = h;
+  setTimeout(function () { var b = document.getElementById("boot"); if (b) b.remove(); }, 15000);
+})();
+</script>
 <div class="wrap" id="app">
   <div class="top">
     <div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>

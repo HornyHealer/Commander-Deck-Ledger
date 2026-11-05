@@ -1373,6 +1373,7 @@ function render() {
   else html += renderLibrary();
   html += `</div><footer class="site-foot">${installHtml()}<p>${CLOUD.user ? "Your decks are saved to your account and sync across your devices." : "Your decks are saved in this browser only. Use <b>Export backup</b> to keep a copy or move them to another device."}</p><p>Card data and images from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Commander Deck Ledger is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p></footer>`;
   app.innerHTML = html;
+  if (S.ready && (!CLOUD.user || CLOUD.loaded)) revealBoot();
   if (glitch) queueMicrotask(() => playGlitch($(".view"))); // after go() has scrolled back to the top
   if (S.dialog) renderDialog();
 }
@@ -1481,6 +1482,27 @@ function playGlitch(target, mode = "view") {
     document.body.appendChild(gw);
   }));
   setTimeout(() => parts.forEach(el => el.remove()), dur + 120);
+}
+// The loading screen ("Defragmenting") stays up until the decks are in, for at least a moment so it never just
+// flashes, then breaks into dark blocks that drop out while the page glitches in underneath.
+// With reduced motion it simply goes as soon as everything is ready.
+const BOOT_MIN_MS = 900;
+let bootDone = false;
+function revealBoot() {
+  if (bootDone) return; bootDone = true;
+  const boot = document.getElementById("boot"); if (!boot) return;
+  if (reduceMotion()) { boot.remove(); return; }
+  const wait = Math.max(0, BOOT_MIN_MS - performance.now());
+  setTimeout(() => {
+    boot.classList.add("boot-out"); // a hard glitch on the text first
+    setTimeout(() => {
+      const cols = Math.max(8, Math.round(innerWidth / 56)), rows = Math.max(8, Math.round(innerHeight / 40));
+      boot.innerHTML = `<div class="boot-tiles" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${blocksHtml(cols, rows, 420, 10)}</div>`;
+      boot.classList.add("boot-gone");
+      playGlitch($(".view"));
+      setTimeout(() => boot.remove(), 480);
+    }, 160);
+  }, wait);
 }
 // A smaller version for a card image as it finishes loading.
 function glitchImage(img) {
