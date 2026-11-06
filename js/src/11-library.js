@@ -1,23 +1,52 @@
 // js/src/11-library.js: the library, All cards, deck art, backups, the card bin and legality.
 // Joined with the other js/src files, in name order, into js/app.js by scripts/build-app.mjs; they share one scope.
+// ---------- library tools: search, sort and pins ----------
+const LIB_SORTS = [["recent", "Last changed"], ["name", "Deck name"], ["commander", "Commander"], ["bracket", "Bracket, high first"]];
+const cmdOf = d => (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : d.name;
+// Pinned decks come first, then the chosen order.
+function libSorter(mode) {
+  const recent = (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0);
+  const by = { name: (a, b) => a.name.localeCompare(b.name) || recent(a, b), commander: (a, b) => cmdOf(a).localeCompare(cmdOf(b)) || recent(a, b),
+    bracket: (a, b) => bracketOf(b.cur, deckCombos(b)).lo - bracketOf(a.cur, deckCombos(a)).lo || recent(a, b) }[mode] || recent;
+  return (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || by(a, b);
+}
+// Does a deck match the search? Every word has to appear in its name, commander or description, or all of them
+// in one card's name (then those cards are listed on the tile).
+// Punctuation is ignored, so "nghathrod" finds Captain N'ghathrod.
+const plain = s => norm(s || "").replace(/['".,:;!?()\/-]/g, "");
+function deckMatch(d, q) {
+  const terms = plain(q).split(" ").filter(Boolean); if (!terms.length) return { cards: [] };
+  const hay = plain([d.name, ...(d.commanders || []), d.desc || ""].join(" "));
+  if (terms.every(t => hay.includes(t))) return { cards: [] };
+  const cards = d.cur.filter(c => { const n = plain(c.n); return terms.every(t => n.includes(t)); }).map(c => c.n);
+  return cards.length ? { cards } : null;
+}
 function renderLibrary() {
   if (!S.ready) return `<div class="empty"><h2>Opening your library…</h2><p>Your decks load here in a moment.</p></div>`;
-  const decks = [...S.decks.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  if (!decks.length) return `<div class="empty"><h2>No decks yet</h2><p>Paste a list the same way you'd import it into Archidekt, one card per line like <span class="mono">1 Sol Ring</span>. The first list becomes the deck's original list, every swap after that goes into its history, and cards you're still waiting on can be saved as incoming until they arrive.</p><div class="emptybtns"><button class="btn primary" data-act="new">${ICONS.plus}Add your first deck</button><button class="btn" data-act="example">Try an example deck</button></div><div class="emptybtns">${backupBtns(true)}</div></div>${renderBin()}`;
-  return `<div class="sect"><span>Decks</span><b>${String(decks.length).padStart(2, "0")}</b></div><div class="libtools">${backupBtns()}</div>${backupWarning()}<div class="lib-grid">${decks.map((d, i) => {
+  const all = [...S.decks.values()];
+  const matches = new Map(); for (const d of all) { const m = deckMatch(d, S.libQ); if (m) matches.set(d.id, m); }
+  const decks = all.filter(d => matches.has(d.id)).sort(libSorter(S.libSort));
+  if (!all.length) return `<div class="empty"><h2>No decks yet</h2><p>Paste a list the same way you'd import it into Archidekt, one card per line like <span class="mono">1 Sol Ring</span>. The first list becomes the deck's original list, every swap after that goes into its history, and cards you're still waiting on can be saved as incoming until they arrive.</p><div class="emptybtns"><button class="btn primary" data-act="new">${ICONS.plus}Add your first deck</button><button class="btn" data-act="example">Try an example deck</button></div><div class="emptybtns">${backupBtns(true)}</div></div>${renderBin()}`;
+  const searching = !!plain(S.libQ);
+  const tools = all.length > 1 ? `<div class="toolbar libbar"><input class="field" id="f-lib" type="search" placeholder="Search decks, commanders or cards" value="${esc(S.libQ || "")}" aria-label="Search decks, commanders or cards"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-lib" aria-label="Sort decks">${LIB_SORTS.map(([v, l]) => `<option value="${v}" ${S.libSort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>` : "";
+  const count = searching ? `<b>${decks.length}</b><span class="of">of ${all.length}</span>` : `<b>${String(decks.length).padStart(2, "0")}</b>`;
+  const none = searching && !decks.length ? `<p class="muted lib-none">No decks match “${esc(S.libQ.trim())}”: no deck name, commander, description or card in a deck's current list has that in it.</p>` : "";
+  return `<div class="sect"><span>Decks</span>${count}</div><div class="libtools">${backupBtns()}</div>${backupWarning()}${tools}${none}<div class="lib-grid">${decks.map((d, i) => {
     const ci = deckCI(d); const changes = changeCount(d); const t = total(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
-    const cmd = (d.commanders && d.commanders.length) ? d.commanders.join(" & ") : d.name;
+    const cmd = cmdOf(d), hits = (matches.get(d.id) || {}).cards || [];
+    const pin = `<button class="pinbtn${d.pinned ? " on" : ""}" data-act="pin" data-id="${esc(d.id)}" aria-pressed="${!!d.pinned}" aria-label="${d.pinned ? "Unpin" : "Pin"} ${esc(d.name)}" title="${d.pinned ? "Unpin from the top" : "Pin to the top"}">${ICONS.pin}</button>`;
     const arch = d.link ? `<a class="arch" href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : `<button class="arch add" data-editlink="${esc(d.id)}">${ICONS.plus}Archidekt link</button>`;
     const art = artNameOf(d);
-    return `<div class="deckbox${art ? " has-art" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(artSrcOf(d))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
+    return `<div class="deckbox${art ? " has-art" : ""}${d.pinned ? " pinned" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(artSrcOf(d))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
       <div class="cmd">${esc(cmd)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
       <div class="dname">${esc(d.name)}</div>
+      ${hits.length ? `<div class="hits">Has ${hits.slice(0, 2).map(esc).join(", ")}${hits.length > 2 ? ` and ${hits.length - 2} more` : ""}</div>` : ""}
       ${d.desc ? `<div class="ddesc">${esc(d.desc)}</div>` : ""}
       <div class="pipline">${ciPips(ci)}<span class="bpill" title="Bracket estimate">Bracket ${esc(bracketOf(d.cur, deckCombos(d)).label)}</span></div>
       <div class="stats"><span><b>${t}</b> in deck</span><span><b>${printedTotal(d)}</b> owned</span><span><b>${changes}</b> changes</span></div>
       ${incN ? `<div class="pills"><div class="tp-pill tp-inc"><b class="mono">${incN}</b> incoming</div></div>` : ""}
       <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
-      <div class="tile-foot">${arch}</div>
+      <div class="tile-foot">${arch}${pin}</div>
     </div></div>`;
   }).join("")}</div>${renderBin()}`;
 }

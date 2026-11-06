@@ -83,6 +83,8 @@ document.addEventListener("click", e => {
     return;
   }
   if (act === "all") { S.allFilter = ""; return go("all"); }
+  // Pinning isn't a change to the deck: it syncs, but doesn't move "last change" or add to the history.
+  if (act === "pin") { const pd = S.decks.get(t.dataset.id); if (pd) { pd.pinned = !pd.pinned; save(pd); toast(pd.pinned ? `Pinned ${pd.name} to the top.` : `Unpinned ${pd.name}.`); render(); } return; }
   if (act === "theme") return setTheme(themeNow() === "dark" ? "light" : "dark");
   if (act === "bin-fold") { S.binOpen = !S.binOpen; try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");
@@ -187,6 +189,7 @@ document.addEventListener("click", e => {
   }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "s-lib") { S.libSort = e.target.value; try { localStorage.setItem("cdl-lib-sort", S.libSort); } catch {} render(); const el = $("#s-lib"); if (el) el.focus(); return; }
   if (e.target.id === "s-sort") { S.sort = e.target.value; try { localStorage.setItem("ledger-sort", S.sort); } catch {} render(); const el = $("#s-sort"); if (el) el.focus(); return; }
   if (e.target.id === "imp-file" && e.target.files && e.target.files[0]) { readBackup(e.target.files[0]); e.target.value = ""; return; }
   if (e.target.id === "e-artcard" && S.dialog) { const dd = S.decks.get(S.dialog.id); keepDialogFields(); if (e.target.value === "__none") dd.artOff = true; else { dd.artOff = false; dd.artCard = e.target.value; } save(dd); render(); renderDialog(); return; }
@@ -199,6 +202,7 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("input", e => {
   const id = e.target.id; const d = S.deckId && S.decks.get(S.deckId);
+  if (id === "f-lib") { S.libQ = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#f-lib"); if (el) { el.focus(); el.setSelectionRange(pos, pos); } return; }
   if (id === "f-all") { S.allFilter = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#f-all"); if (el) { el.focus(); el.setSelectionRange(pos, pos); } return; }
   if (id === "f-bin") { S.binFilter = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#f-bin"); if (el) { el.focus(); el.setSelectionRange(pos, pos); } return; }
   if (id === "f-cur") { S.filter = e.target.value; const pos = e.target.selectionStart; render(); const el = $("#f-cur"); if (el) { el.focus(); el.setSelectionRange(pos, pos); } return; }
@@ -216,6 +220,7 @@ document.addEventListener("input", e => {
   if (id === "u-link" && S.dialog) { S.dialog.link = e.target.value; return; }
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && e.target.id === "f-lib" && e.target.value) { e.preventDefault(); S.libQ = ""; render(); const el = $("#f-lib"); if (el) el.focus(); return; }
   if (e.key === "Enter" && ["n-link", "chk-link", "u-link"].includes(e.target.id)) { e.preventDefault(); const w = e.target.id.split("-")[0]; const b = $(`[data-arch="${w}"]`); if (b && !b.disabled) archFetch(w, b); return; }
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".deckbox[data-open]")) { e.preventDefault(); return go("deck", e.target.dataset.open); }
   if (e.target.id === "ba-search") {

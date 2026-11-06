@@ -2,7 +2,7 @@
 // Joined with the other js/src files, in name order, into js/app.js by scripts/build-app.mjs; they share one scope.
 // ---------- state ----------
 let SORT0 = "cost"; try { SORT0 = localStorage.getItem("ledger-sort") || "cost"; } catch {}
-const S = { binOpen: (() => { try { return localStorage.getItem("cdl-bin-open") === "1"; } catch { return false; } })(), sort: SORT0, loose: { cards: [] }, decks: new Map(), view: "library", deckId: null, tab: "current", filter: "", printedFilter: "all", db: null, col: null, live: false, ready: false, confirm: null, dialog: null };
+const S = { libQ: "", libSort: (() => { try { return localStorage.getItem("cdl-lib-sort") || "recent"; } catch { return "recent"; } })(), binOpen: (() => { try { return localStorage.getItem("cdl-bin-open") === "1"; } catch { return false; } })(), sort: SORT0, loose: { cards: [] }, decks: new Map(), view: "library", deckId: null, tab: "current", filter: "", printedFilter: "all", db: null, col: null, live: false, ready: false, confirm: null, dialog: null };
 
 // ---------- error reports ----------
 // When something goes wrong in a visitor's browser, a short report goes to the Cloudflare Worker: the error

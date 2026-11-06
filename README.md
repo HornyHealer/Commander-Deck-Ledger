@@ -94,6 +94,10 @@ Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text b
 
 The site opens on a dark "Defragmenting" screen (in `index.html`, so it shows before any code loads) that stays until the decks are in, for at least about a second. It then breaks into dark blocks that drop out while the page glitches in. Switching views, opening a popup and each card image finishing loading play a short Marathon-style glitch: blocks dropping out in random order, red and cyan copies cut into horizontal slices sliding together, and scan lines (`playGlitch` and `glitchImage` in `js/src/10-glitch.js`). All of it is skipped on devices set to reduce motion, and the automatic tests run with reduced motion except `tests/motion.spec.js`, which tests the effects.
 
+## Library tools
+
+Above the decks (once there are two or more): a search box that finds decks by name, commander or description, or by a card in a deck's current list (every word has to match; punctuation is ignored, so "nghathrod" finds Captain N'ghathrod; matching cards are listed on the tile; Escape clears it), and a sort menu (last changed, deck name, commander, or bracket from high to low), remembered in that browser. The pin button on each tile keeps a deck at the top whatever the sort. A pin syncs with the account but isn't a change to the deck: it doesn't move "last change" or add to the history.
+
 ## Backdrop, light/dark and the top bar
 
 - **Backdrop** (`js/backdrop.js`): a canvas behind the page inside a console frame, at a quiet strength: a grid of squares with a slow wave of lighter and darker squares rolling from the bottom right to the top left, chip blocks and traces with a braided band and short "weave worms" crawling along them, and terminal readouts that type out fresh text (using your deck names) over faint rails. On wide screens the readouts sit in the side margins; otherwise one runs low on the left and only shows where the page isn't. It redraws 20 times a second, stops while the tab is hidden, and draws one still frame with reduced motion. Its colours are the `--bd-*` tokens in `css/style.css`.

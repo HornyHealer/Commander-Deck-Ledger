@@ -376,6 +376,7 @@
     setDecks(names) {
       const list = (names || []).map(n => String(n).toUpperCase().replace(/[^A-Z0-9 ,'-]/g, "").trim()).filter(Boolean);
       if (list.length && list.join("|") !== DECKS.join("|")) DECKS = list.slice(0, 40);
+      if (reduce.matches && grid) still(); // the page changed: redraw the still frame so nothing sits under new text
     },
     refresh() { readColors(); if (grid) buildGeometry(); if (reduce.matches) still(); },
   };

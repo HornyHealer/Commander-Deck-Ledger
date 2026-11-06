@@ -773,3 +773,16 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .bd-frame .rule { position: absolute; width: 1px; height: 14px; background: var(--line); }
 .bd-frame .rule.a { left: 33.3%; top: 26px; } .bd-frame .rule.b { left: 66.6%; top: 26px; } .bd-frame .rule.c { left: 33.3%; bottom: 26px; } .bd-frame .rule.d { left: 66.6%; bottom: 26px; }
 @media (max-width: 600px) { .bd-frame .edge span:nth-child(2) { display: none; } }
+
+/* ---------- Library tools: search, sort and pins ---------- */
+.libbar { margin-bottom: 14px; }
+.libbar .field#f-lib { flex: 1 1 260px; }
+.sect .of { color: var(--muted); }
+.lib-none { margin: 4px 0 18px; }
+.deckbox .hits { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--ink); background: var(--accent-soft); padding: 3px 6px; align-self: flex-start; max-width: 100%; overflow-wrap: anywhere; }
+.tile-foot { align-items: center; justify-content: space-between; gap: 8px; }
+.pinbtn { background: none; border: 1px solid transparent; color: var(--muted); padding: 5px; display: inline-grid; place-items: center; cursor: pointer; margin-left: auto; }
+.pinbtn:hover, .pinbtn:focus-visible { border-color: var(--rule); color: var(--ink); }
+.pinbtn.on { background: var(--acid); color: var(--acid-ink); border-color: var(--acid); }
+.pinbtn .icon { width: 15px; height: 15px; }
+.deckbox.pinned .tile-no::after { content: " · pinned"; }

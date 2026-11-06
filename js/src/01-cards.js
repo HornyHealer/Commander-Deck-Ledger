@@ -66,6 +66,7 @@ const deckLink = ref => { if (!ref) return ""; const dk = ref.id ? S.decks.get(r
 const MANA_ORDER = "WUBRG";
 
 const ICONS = {
+  pin: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5.5 2h5l-.8 4.2 2.3 2.3v1.2H4V8.5l2.3-2.3zM8 9.7V14"/></svg>',
   sun: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="5" height="5"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15M3 3l1.6 1.6M11.4 11.4 13 13M13 3l-1.6 1.6M4.6 11.4 3 13"/></svg>',
   moon: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 2.5h-3v2h-2v2h-2v3h2v2h2v2h3v-2h-2v-2h-2v-3h2v-2h2z"/></svg>',
   chev: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 6 4 4 4-4"/></svg>',
