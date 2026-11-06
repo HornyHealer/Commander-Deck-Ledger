@@ -25,7 +25,6 @@ function reportError(kind, message, where) {
 }
 window.addEventListener("error", e => { if (e && e.message) reportError("crash", e.message, (String(e.filename || "").split("/").pop().split("?")[0]) + (e.lineno ? ":" + e.lineno : "")); });
 window.addEventListener("unhandledrejection", e => { const r = e && e.reason; reportError("crash", r && (r.message || r.code) || String(r), r && r.stack ? String(r.stack).split("\n")[1] || "" : ""); });
-const writeChains = new Map();
 let pendingRender = false;
 
 function curMap(d) { return new Map(d.cur.map(c => [c.n, c.q])); }
@@ -64,21 +63,7 @@ function markPrinted(d, n, q) {
   if (!p) d.printed.push({ n, q, at: now, o: isOrig ? 0 : 1 });
   else { p.q += q; if (p.o === 0 && !p.at) p.at = now; }
 }
-const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
 const isChange = e => e.kind === "swap" || e.kind === "import";
-function printCards(d, list, from) {
-  const now = Date.now(); const cards = [];
-  for (const x of list) { if (x.q > 0) { markPrinted(d, x.n, x.q); cards.push({ n: x.n, q: x.q }); } }
-  if (!cards.length) return;
-  const last = d.log[d.log.length - 1];
-  if (!from && last && last.kind === "print" && !last.from && sameDay(last.t, now)) {
-    for (const c of cards) { const ex = last.cards.find(y => y.n === c.n); if (ex) ex.q += c.q; else last.cards.push(c); }
-    last.t = now;
-  } else {
-    const e = { id: uid(), t: now, kind: "print", cards }; if (from) e.from = from; d.log.push(e);
-  }
-  d.updatedAt = now;
-}
 function unprintCards(d, list, to) {
   const now = Date.now(); const cards = [];
   for (const x of list) {

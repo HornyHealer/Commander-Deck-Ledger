@@ -82,34 +82,6 @@ function renderDialog() {
   if (dl.kind === "copy") setTimeout(() => { const t = $("#c-text"); if (t) { t.focus(); t.select(); } }, 0);
 }
 function keepDialogFields() { const n = $("#e-name"), l = $("#e-link"), ds = $("#e-desc"); if (S.dialog && n) { S.dialog.name = n.value; S.dialog.link = l ? l.value : S.dialog.link; if (ds) S.dialog.desc = ds.value; S.dialog.cmds = [...document.querySelectorAll('input[name="e-cmd"]:checked')].map(i => i.value); } }
-async function shrinkImage(file) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const max = 900; const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return await new Promise(res => c.toBlob(b => res(b), "image/jpeg", 0.82));
-  } finally { URL.revokeObjectURL(url); }
-}
-async function uploadArt(file) {
-  const dl = S.dialog; if (!dl || dl.kind !== "edit" || !S.assets) return;
-  const dd = S.decks.get(dl.id); if (!dd) return;
-  if (!/^image\//.test(file.type)) return toast("Choose an image file (JPG, PNG or WebP).");
-  keepDialogFields(); dl.uploading = true; renderDialog();
-  try {
-    const blob = await shrinkImage(file);
-    const res = await S.assets.upload(blob, { type: "image/jpeg" });
-    const old = dd.art; dd.art = res.id; dd.updatedAt = Date.now(); save(dd);
-    if (old) S.assets.delete(old).catch(() => {});
-    toast("Panel art saved.");
-  } catch (err) {
-    const c = err && err.code;
-    toast(c === "quota_exceeded" ? "Storage is full. Remove art from another deck first." : c === "too_large" ? "That image is too large. Try a smaller one." : "Couldn't upload that image. Try again or pick a different file.");
-  }
-  if (S.dialog === dl) { dl.uploading = false; renderDialog(); }
-  render();
-}
 function updateBinAdd() {
   const el = $("#ba-sum"), ta = $("#ba-list"), go = $("#ba-go"); if (!el || !ta) return;
   const p = parseList(ta.value); S.dialog.parsed = p; const n = p.cards.reduce((a, c) => a + c.q, 0);

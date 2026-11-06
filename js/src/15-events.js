@@ -54,9 +54,6 @@ document.addEventListener("click", e => {
   if (t.dataset.bapick) return baPick(+t.dataset.bapick);
   if (t.dataset.pick) { const [side, i] = t.dataset.pick.split("|"); return pick(side, +i); }
   const act = t.dataset.act;
-  if (act === "reg") { S.reg = S.reg ? null : "confirm"; return render(); }
-  if (act === "reg-close") { S.reg = null; return render(); }
-  if (act === "reg-go") { if (S.reg !== "running") startRefresh(); return; }
   if (act === "export") return exportBackup();
   if (act === "signin") return signIn();
   if (act === "acct-menu") { CLOUD.menu = !CLOUD.menu; return render(); }
@@ -171,14 +168,12 @@ document.addEventListener("click", e => {
   if (dlg === "prints-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); PRINTS.delete(artNameOf(dd)); keepDialogFields(); return renderDialog(); }
   if (dlg === "imp-go") { const dl = S.dialog; applyImport(dl); closeDialog(); go("library"); return toast(`Imported ${dl.decks.length} deck${dl.decks.length === 1 ? "" : "s"}.`); }
   if (dlg === "ba-go") { const p = parseList(($("#ba-list") || {}).value || ""); const n = addToBin(p.cards); closeDialog(); render(); return toast(n ? `Added ${n} card${n > 1 ? "s" : ""} to the card bin.` : "Nothing to add."); }
-  if (dlg === "art-rm") { const dd = S.decks.get(S.dialog.id); keepDialogFields(); const old = dd.art; delete dd.art; delete dd.artPos; save(dd); render(); renderDialog(); if (old && S.assets) S.assets.delete(old).catch(() => {}); return toast("Panel art removed."); }
   if (dlg === "del") { S.dialog.del = true; return renderDialog(); }
   if (dlg === "del-no") { S.dialog.del = false; return renderDialog(); }
   if (dlg === "del-yes") {
     const id = S.dialog.id; const dd = S.decks.get(id); const keepEl = $("#del-keep"); const keep = !!(keepEl && keepEl.checked);
     let kept = 0;
     if (dd && keep) { const now = Date.now(); for (const p of dd.printed) if (p.q > 0) { S.loose.cards.push({ n: p.n, q: p.q, from: dd.name, at: now }); kept += p.q; } saveLoose(); }
-    if (dd && dd.art && S.assets) S.assets.delete(dd.art).catch(() => {});
     closeDialog(); removeDeck(id); go("library"); return toast(kept ? `Deck deleted. ${kept} owned cards moved to the card bin.` : "Deck deleted.");
   }
   if (dlg === "to-bench" || dlg === "to-bench-save") {

@@ -59,10 +59,6 @@ function lastOut(d, n) {
   for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if ((e.out || []).some(o => o.n === n)) return e; }
   return null;
 }
-function lastIn(d, n) {
-  for (let i = d.log.length - 1; i >= 0; i--) { const e = d.log[i]; if ((e.in || []).some(o => o.n === n)) return e; }
-  return null;
-}
 function outsideCI(d, n) { const ci = deckCI(d); if (!d.commanders?.length || !rec(n)) return false; return [...ciOf(n)].some(c => !ci.includes(c)); }
 
 function newDeck({ name, cards, commanders, printedNow = true }) {
