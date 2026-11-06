@@ -49,3 +49,18 @@ test('sample hand: new hand, draw and London mulligans @phone', async ({ page })
   await expect(page.locator('.st-mull')).toHaveCount(0);
   await expect(hand).toHaveCount(7);
 });
+
+test('a card in the sample hand opens bigger, and closes with Escape or a tap @phone', async ({ page }) => {
+  await openStats(page);
+  const first = page.locator('.hand .hand-card').first();
+  const name = await first.getAttribute('data-card');
+  await first.click();
+  await expect(page.locator('.cardpv.tap')).toBeVisible();
+  await expect(page.locator('.cardpv img')).toHaveAttribute('alt', name);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cardpv')).toBeHidden();
+  await first.click();
+  await page.mouse.click(5, 5);                                  // anywhere else
+  await expect(page.locator('.cardpv')).toBeHidden();
+  await expect(page.locator('.hand .hand-card')).toHaveCount(7);  // and that tap didn't do anything else
+});

@@ -183,6 +183,11 @@ test('hovering a card name shows its picture', async ({ page }, info) => {
   await name.hover();
   await expect(page.locator('.cardpv')).toBeVisible();
   await expect(page.locator('.cardpv img')).toHaveAttribute('src', /exact=Sol%20Ring/);
+  // big enough to read, with no border or shadow around it, and no buttons while hovering
+  const box = await page.locator('.cardpv').boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(330);
+  expect(await page.locator('.cardpv').evaluate(el => getComputedStyle(el).boxShadow)).toBe('none');
+  await expect(page.locator('.cardpv .pv-acts')).toBeHidden();
 });
 
 test('tapping a card name on a phone shows its picture @phone', async ({ page }, info) => {
@@ -191,6 +196,12 @@ test('tapping a card name on a phone shows its picture @phone', async ({ page },
   await openDeck(page, 'Rat Pack');
   await page.locator('.row .nm > span:first-child', { hasText: 'Sol Ring' }).tap();
   await expect(page.locator('.cardpv.tap')).toBeVisible();
+  // the buttons sit below the card, not on it
+  const img = await page.locator('.cardpv img').boundingBox(), acts = await page.locator('.cardpv .pv-acts').boundingBox();
+  expect(acts.y).toBeGreaterThanOrEqual(img.y + img.height - 1);
+  await expect(page.locator('.cardpv .pv-link')).toHaveAttribute('href', /scryfall\.com/);
+  await page.locator('.cardpv .pv-close').tap();
+  await expect(page.locator('.cardpv')).toBeHidden();
 });
 
 test('cards not marked owned in an older backup become an incoming change', async ({ page }) => {

@@ -72,24 +72,44 @@ function cardNameFrom(el) {
   s = (s || el.textContent || "").trim().replace(/^\d+x\s+/, "").replace(/\s+×\d+$/, "").trim();
   return s;
 }
+// Card picture previews. With a mouse, hovering a card name shows its picture beside the pointer, large enough
+// to read. Tapping a card name on a phone, or clicking a card in the sample hand, opens it big in the middle of
+// the screen with "Open on Scryfall" and "Close" below it; tapping anywhere else or Escape closes it.
 let pv = null, pvTimer = null, pvFor = null;
 function pvEl() {
-  if (!pv) { pv = document.createElement("div"); pv.className = "cardpv"; pv.hidden = true; pv.innerHTML = '<img alt=""><a class="pv-link" target="_blank" rel="noopener" hidden>Open on Scryfall ↗</a>'; document.body.appendChild(pv); pv.querySelector("img").addEventListener("error", () => { pv.hidden = true; }); }
+  if (!pv) {
+    pv = document.createElement("div"); pv.className = "cardpv"; pv.hidden = true;
+    pv.innerHTML = '<img alt=""><div class="pv-acts"><a class="btn pv-link" target="_blank" rel="noopener">Open on Scryfall ↗</a><button class="btn pv-close" type="button">Close</button></div>';
+    document.body.appendChild(pv);
+    pv.querySelector("img").addEventListener("error", () => { if (!pv.classList.contains("tap")) pv.hidden = true; });
+  }
   return pv;
 }
+// Hover size: about 340px wide, smaller on short screens so it always fits.
+const pvSize = () => { const w = Math.round(Math.min(340, (innerHeight - 32) * 488 / 680)); return [w, Math.round(w * 680 / 488)]; };
 function placePv(x, y) {
-  const p = pvEl(); const w = 250, h = 349, pad = 16;
-  let left = x + 22, top = y - 60;
+  const p = pvEl(); const [w, h] = pvSize(), pad = 16;
+  let left = x + 22, top = y - 80;
   if (left + w + pad > innerWidth) left = x - w - 22;
   if (top + h + pad > innerHeight) top = innerHeight - h - pad;
   if (top < pad) top = pad;
-  p.style.left = Math.max(pad, left) + "px"; p.style.top = top + "px";
+  p.style.width = w + "px"; p.style.left = Math.max(pad, left) + "px"; p.style.top = top + "px";
 }
 function showPv(name, x, y) {
-  const p = pvEl(); const img = p.querySelector("img");
+  const p = pvEl(); if (p.classList.contains("tap")) return;
+  const img = p.querySelector("img");
   const url = imgUrl(name); if (img.getAttribute("src") !== url) img.src = url;
   img.alt = name; placePv(x, y); p.hidden = false;
 }
+function openPv(name) {
+  const p = pvEl(); clearTimeout(pvTimer); pvFor = null;
+  p.classList.add("tap"); p.style.left = ""; p.style.top = ""; p.style.width = "";
+  const img = p.querySelector("img"); const url = imgUrl(name); if (img.getAttribute("src") !== url) img.src = url; img.alt = name;
+  const a = p.querySelector(".pv-link"); a.href = scry(name); a.setAttribute("aria-label", `Open ${name} on Scryfall`);
+  p.setAttribute("role", "dialog"); p.setAttribute("aria-label", name); p.hidden = false;
+  p.querySelector(".pv-close").focus({ preventScroll: true });
+}
+function closePv() { if (!pv) return; pv.hidden = true; pv.classList.remove("tap"); pv.removeAttribute("role"); }
 if (canHover) {
   document.addEventListener("mouseover", e => {
     const el = e.target.closest && e.target.closest(PREVIEW_SEL); if (!el || el === pvFor) return;
@@ -98,23 +118,29 @@ if (canHover) {
     const x = e.clientX, y = e.clientY;
     pvTimer = setTimeout(() => { if (pvFor === el) showPv(n, x, y); }, 140);
   });
-  document.addEventListener("mousemove", e => { if (pv && !pv.hidden) placePv(e.clientX, e.clientY); });
+  document.addEventListener("mousemove", e => { if (pv && !pv.hidden && !pv.classList.contains("tap")) placePv(e.clientX, e.clientY); });
   document.addEventListener("mouseout", e => {
     if (!pvFor) return; const to = e.relatedTarget;
     if (to && pvFor.contains(to)) return;
-    pvFor = null; clearTimeout(pvTimer); if (pv) pv.hidden = true;
+    pvFor = null; clearTimeout(pvTimer); if (pv && !pv.classList.contains("tap")) pv.hidden = true;
   });
-  document.addEventListener("scroll", () => { if (pv) pv.hidden = true; pvFor = null; }, true);
-} else {
-  document.addEventListener("click", e => {
-    if (pv && !pv.hidden) { if (e.target.closest(".pv-link")) { setTimeout(() => { pv.hidden = true; pv.classList.remove("tap"); }, 0); return; } e.preventDefault(); pv.hidden = true; pv.classList.remove("tap"); return; }
-    const el = e.target.closest && e.target.closest(".row .nm > span:first-child"); if (!el) return;
-    const n = cardNameFrom(el); if (!n) return;
-    e.preventDefault(); // show the picture first; its link opens Scryfall
-    const p = pvEl(); p.classList.add("tap"); const img = p.querySelector("img"); img.src = imgUrl(n); img.alt = n; p.style.left = ""; p.style.top = "";
-    const a = p.querySelector(".pv-link"); a.href = scry(n); a.hidden = false; p.hidden = false;
-  });
+  document.addEventListener("scroll", () => { if (pv && !pv.classList.contains("tap")) pv.hidden = true; pvFor = null; }, true);
 }
+// Opening big: card names on phones, and cards in the sample hand everywhere.
+document.addEventListener("click", e => {
+  if (pv && !pv.hidden && pv.classList.contains("tap")) {
+    if (e.target.closest(".pv-link")) { setTimeout(closePv, 0); return; }
+    e.preventDefault(); e.stopPropagation(); closePv(); return;
+  }
+  const hc = e.target.closest && e.target.closest(".hand-card");
+  if (hc) { e.preventDefault(); return openPv(hc.dataset.card); }
+  if (canHover) return;
+  const el = e.target.closest && e.target.closest(".row .nm > span:first-child"); if (!el) return;
+  const n = cardNameFrom(el); if (!n) return;
+  e.preventDefault(); // show the picture first; its link opens Scryfall
+  openPv(n);
+}, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && pv && !pv.hidden && pv.classList.contains("tap")) { e.preventDefault(); closePv(); } });
 
 function safeRender() {
   const a = document.activeElement;

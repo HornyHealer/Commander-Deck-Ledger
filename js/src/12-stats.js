@@ -107,5 +107,5 @@ function statsHand(d) {
   const note = h.mull ? `Mulligan ${h.mull}: ${bottom ? `put ${bottom} card${bottom === 1 ? "" : "s"} on the bottom` : "the first one is free in multiplayer Commander, so keep all seven"}.` : "";
   return `<section class="st-sec"><h3>Sample hand <span class="muted">${cards.length ? `${lands} land${lands === 1 ? "" : "s"} in ${cards.length} cards${drawn > 0 ? `, ${drawn} drawn` : ""}` : "no cards to draw"}</span></h3>
     <div class="st-handbar"><button class="btn sm" data-act="hand-new">New hand</button><button class="btn sm" data-act="hand-mull">Mulligan</button><button class="btn sm" data-act="hand-draw"${h.shown >= h.lib.length ? " disabled" : ""}>Draw a card</button>${note ? `<span class="muted st-mull">${note}</span>` : ""}</div>
-    <div class="hand">${cards.map((n, i) => `<figure class="hand-card${i >= 7 ? " drawn" : ""}"><img src="${esc(imgUrl(n))}" alt="${esc(n)}" loading="lazy" onerror="this.remove()"><figcaption>${esc(n)}</figcaption></figure>`).join("")}</div></section>`;
+    <div class="hand">${cards.map((n, i) => `<button type="button" class="hand-card${i >= 7 ? " drawn" : ""}" data-card="${esc(n)}" aria-label="Show ${esc(n)} bigger"><img src="${esc(imgUrl(n))}" alt="" loading="lazy" onerror="this.remove()"><span class="cap">${esc(n)}</span></button>`).join("")}</div></section>`;
 }
