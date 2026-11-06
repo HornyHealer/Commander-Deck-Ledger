@@ -95,3 +95,38 @@ test('with reduced motion the loading screen just goes once the page is ready', 
   await expect(page.locator('#boot')).toHaveCount(0);
   await expect(page.locator('.vfx, .boot-tiles')).toHaveCount(0);
 });
+
+test('switching a deck tab, and opening or closing a fold, glitches just that part', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 5000 });
+  await page.getByRole('button', { name: 'Try an example deck' }).click();
+  await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
+  const settle = () => expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
+  // a tab: the pieces cover the tab's contents, not the whole page
+  await page.click('[data-tab="stats"]');
+  await expect(page.locator('.vfx.p')).toHaveCount(1);
+  const fx = await page.locator('.vfx.p').boundingBox(), panel = await page.locator('#app .tabpanel').boundingBox();
+  // (the contents jitter sideways during the effect, so allow for that)
+  expect(Math.abs(fx.x - panel.x)).toBeLessThan(40); expect(Math.abs(fx.width - panel.width)).toBeLessThan(2);
+  expect(fx.width).toBeLessThan(await page.evaluate(() => innerWidth) - 100); // not the whole page
+  await settle();
+  // clicking the tab that's already open does nothing
+  await page.click('[data-tab="stats"]');
+  await page.waitForTimeout(100); await expect(page.locator('.vfx')).toHaveCount(0);
+  // a fold-out section
+  await page.click('.st-details summary');
+  await expect(page.locator('.vfx.p')).toHaveCount(1);
+  await settle();
+  // the bracket explanation, open and shut
+  await page.click('[data-act="toggle-bracket"]');
+  await expect(page.locator('.vfx.p')).toHaveCount(1);
+  await settle();
+  await page.click('[data-act="toggle-bracket"]');
+  await expect(page.locator('.vfx.p')).toHaveCount(1);
+  await settle();
+  // the card bin
+  await page.click('[data-act="home"]');
+  await settle();
+  await page.click('.bin-fold');
+  await expect(page.locator('.vfx.p')).toHaveCount(1);
+});

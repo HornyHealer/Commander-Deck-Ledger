@@ -168,12 +168,13 @@ function renderDeck(d) {
       ${tabBtn("history", "History", histCount)}
       ${tabBtn("stats", "Stats", "")}
     </div>`;
+  h += `<div class="tabpanel" role="tabpanel">`;
   if (S.tab === "current") h += renderCurrent(d);
   else if (S.tab === "removed") h += renderRemoved(d, removed);
   else if (S.tab === "printed") h += renderPrinted(d);
   else if (S.tab === "stats") h += renderStats(d);
   else h += renderHistory(d);
-  h += `</div>${renderBench(d)}</div>`;
+  h += `</div></div>${renderBench(d)}</div>`;
   return h;
 }
 function tabBtn(id, label, n, drop) {

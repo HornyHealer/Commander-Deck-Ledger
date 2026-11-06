@@ -5,7 +5,9 @@
 // loading moth), red and cyan copies cut into horizontal slices that slide together and lock onto the real
 // thing, and a few colored scan lines. Copies are look-only (inert, no ids) and removed afterwards.
 // Skipped entirely when the device asks for reduced motion.
-let lastViewKey = null, lastDialogKey = null;
+let lastViewKey = null, lastDialogKey = null, glitchTarget = null;
+// The next render glitches just this part of the page (a deck tab's contents, a section that folded open or shut).
+function glitchNext(sel) { glitchTarget = sel; }
 const reduceMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 const GLITCH_MS = 400, GLITCH_POP_MS = 340, GLITCH_IMG_MS = 300;
 const vfxRnd = (a, b) => a + Math.random() * (b - a);
@@ -150,6 +152,11 @@ function glitchImage(img) {
   img.animate(realFrames("transform", 10, false), { duration: GLITCH_IMG_MS });
   setTimeout(() => box.remove(), GLITCH_IMG_MS + 100);
 }
+// Fold-out sections (<details>, like "How it works" on a combo or "Counts by type") glitch as they open or close.
+document.addEventListener("click", e => {
+  const sm = e.target.closest && e.target.closest("summary"); if (!sm || reduceMotion()) return;
+  const det = sm.parentElement; requestAnimationFrame(() => { if (det && det.isConnected) playGlitch(det, "pop"); });
+});
 // Card images glitch in when they load: the hover preview, Combos' card pictures and the artwork choices.
 const GLITCH_IMG_SEL = ".cardpv img, .cb-img, .print img, .artprev, .hand-card img";
 document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.matches(GLITCH_IMG_SEL) && !t.closest(".vfx-ghosts, .vfx-img")) glitchImage(t); }, true);

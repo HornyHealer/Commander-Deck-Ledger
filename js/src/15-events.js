@@ -12,7 +12,7 @@ document.addEventListener("click", e => {
   }
   const d = S.deckId && S.decks.get(S.deckId);
   if (t.dataset.open) return go("deck", t.dataset.open);
-  if (t.dataset.tab) { S.tab = t.dataset.tab; S.filter = ""; S.confirm = null; return render(); }
+  if (t.dataset.tab) { if (S.tab !== t.dataset.tab) glitchNext(".tabpanel"); S.tab = t.dataset.tab; S.filter = ""; S.confirm = null; return render(); }
   if (t.dataset.alltype) { const s = S.allTypes || (S.allTypes = new Set()); const g = t.dataset.alltype; s.has(g) ? s.delete(g) : s.add(g); return render(); }
   if (t.dataset.allcolor) { const s = S.allColors || (S.allColors = new Set()); const c = t.dataset.allcolor; s.has(c) ? s.delete(c) : s.add(c); return render(); }
   if (t.dataset.colormode) { S.colorMode = t.dataset.colormode; return render(); }
@@ -58,8 +58,8 @@ document.addEventListener("click", e => {
   if (act === "signin") return signIn();
   if (act === "acct-menu") { CLOUD.menu = !CLOUD.menu; return render(); }
   if (act === "signout") { CLOUD.menu = false; return signOutNow(); }
-  if (act === "toggle-checks") { S.showChecks = !S.showChecks; return render(); }
-  if (act === "toggle-bracket") { S.showBracket = !S.showBracket; return render(); }
+  if (act === "toggle-checks") { S.showChecks = !S.showChecks; glitchNext(S.showChecks ? "#deck-checks" : ".summary"); return render(); }
+  if (act === "toggle-bracket") { S.showBracket = !S.showBracket; glitchNext(S.showBracket ? "#deck-bracket" : ".summary"); return render(); }
   if (act === "role-done") { S.roleEdit = null; return render(); }
   if (act === "snap-close") { S.snap = null; render(); window.scrollTo(0, 0); return; }
   if (act === "copy-snap" && d && S.snap) return copyText(listText(d, versionAt(d, S.snap.key), true), "Past version");
@@ -86,7 +86,7 @@ document.addEventListener("click", e => {
   if (act === "hand-mull" && d) { newHand(d, (S.hand && S.hand.id === d.id ? S.hand.mull : 0) + 1); return render(); }
   if (act === "hand-draw" && d && S.hand && S.hand.id === d.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
   if (act === "theme") return setTheme(themeNow() === "dark" ? "light" : "dark");
-  if (act === "bin-fold") { S.binOpen = !S.binOpen; try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
+  if (act === "bin-fold") { S.binOpen = !S.binOpen; glitchNext(".bin"); try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
   if (act === "chk-copy-owned") return copyText((S.checkRows || []).filter(r => r.fromBin || r.fromDecks).map(r => `${r.fromBin + r.fromDecks}x ${r.n}`).join("\n"), "Owned list");
@@ -110,13 +110,13 @@ document.addEventListener("click", e => {
   if (act === "combos" && d) return openCombos(d);
   if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
   if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
-  if (act === "combos-possible" && S.dialog) { S.dialog.showPossible = !S.dialog.showPossible; renderDialog(); if (S.dialog.showPossible) { const el = $("#cb-possible"); if (el) el.scrollIntoView({ block: "start", behavior: "smooth" }); } return; }
+  if (act === "combos-possible" && S.dialog) { S.dialog.showPossible = !S.dialog.showPossible; renderDialog(); if (S.dialog.showPossible) { const el = $("#cb-possible"); if (el) { el.scrollIntoView({ block: "start", behavior: "smooth" }); if (!reduceMotion()) setTimeout(() => playGlitch(el, "pop"), 260); } } return; }
   if (act === "sync-retry") {
     t.disabled = true; t.textContent = "Connecting…";
     cloudInit().then(() => { if (CLOUD.failed) toast("Sync still couldn't load (" + (CLOUD.err || "unknown error") + "). Check your connection, or try in the browser."); else { toast("Sync is back."); if (S.ready && !CLOUD.user) render(); } safeRender(); });
     return;
   }
-  if (act === "bench-toggle") { S.benchOpen = !S.benchOpen; const tt = $(".toast"); if (tt) tt.hidden = true; render(); if (S.benchOpen) { const el = $(".bench.open"); if (el) el.scrollTop = 0; } return; }
+  if (act === "bench-toggle") { S.benchOpen = !S.benchOpen; glitchNext(".bench"); const tt = $(".toast"); if (tt) tt.hidden = true; render(); if (S.benchOpen) { const el = $(".bench.open"); if (el) el.scrollTop = 0; } return; }
   if (act === "install" && installEvt) { const ev = installEvt; ev.prompt(); ev.userChoice.finally(() => { installEvt = null; render(); }); return; }
   if (act === "save-incoming" && d) return saveIncoming(d);
   if (act === "inc-cancel-no") { S.confirm = null; return render(); }

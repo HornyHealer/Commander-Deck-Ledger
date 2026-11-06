@@ -43,6 +43,8 @@ function render() {
   if (S.ready && window.LedgerBackdrop) window.LedgerBackdrop.setDecks([...S.decks.values()].map(x => x.name));
   if (S.ready && (!CLOUD.user || CLOUD.loaded)) revealBoot();
   if (glitch) queueMicrotask(() => playGlitch($(".view"))); // after go() has scrolled back to the top
+  else if (glitchTarget) { const sel = glitchTarget; queueMicrotask(() => { if (!reduceMotion()) playGlitch($(sel), "pop"); }); }
+  glitchTarget = null;
   if (S.dialog) renderDialog();
 }
 // ---------- light and dark ----------
