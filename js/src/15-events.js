@@ -82,6 +82,9 @@ document.addEventListener("click", e => {
   if (act === "all") { S.allFilter = ""; return go("all"); }
   // Pinning isn't a change to the deck: it syncs, but doesn't move "last change" or add to the history.
   if (act === "pin") { const pd = S.decks.get(t.dataset.id); if (pd) { pd.pinned = !pd.pinned; save(pd); toast(pd.pinned ? `Pinned ${pd.name} to the top.` : `Unpinned ${pd.name}.`); render(); } return; }
+  if (act === "hand-new" && d) { newHand(d, 0); return render(); }
+  if (act === "hand-mull" && d) { newHand(d, (S.hand && S.hand.id === d.id ? S.hand.mull : 0) + 1); return render(); }
+  if (act === "hand-draw" && d && S.hand && S.hand.id === d.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
   if (act === "theme") return setTheme(themeNow() === "dark" ? "light" : "dark");
   if (act === "bin-fold") { S.binOpen = !S.binOpen; try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");

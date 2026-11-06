@@ -11,7 +11,10 @@
 //   oracleId   Scryfall's permanent ID for the card (the same across every printing and any rename)
 //   pairCode   how it pairs as a second commander: P partner, PW:<name> partner with, PV:<kind> partner variant,
 //              FF friends forever, CB choose a Background, BG is a Background, DC Doctor's companion, TD Time Lord Doctor
-//   copyLimit  -1 any number of copies allowed, N up to N copies; left out for normal singleton cards
+//   copyLimit  -1 any number of copies allowed, N up to N copies; left out for normal singleton cards (0 when
+//              landColors follows)
+//   landColors lands only: the colours it makes, "WUBRGC" letters; for fetch lands the basic types it finds,
+//              "*" for any basic land (js/card-rules.js landColors)
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +24,7 @@ import { createRequire } from 'node:module';
 // The text-reading rules are shared with the website, so lookups made in the browser match this list.
 const rules = createRequire(import.meta.url)('../js/card-rules.js');
 export const FLAG = rules.FLAG;
-export const { pairCode, copyLimit, textFlags } = rules;
+export const { pairCode, copyLimit, textFlags, landColors } = rules;
 const SKIP_LAYOUTS = new Set(['token', 'double_faced_token', 'emblem', 'art_series', 'vanguard', 'scheme', 'planar', 'augment', 'host']);
 const TYPE_CODES = [['Creature', 'C'], ['Planeswalker', 'P'], ['Battle', 'B'], ['Land', 'L'], ['Instant', 'I'], ['Sorcery', 'S'], ['Artifact', 'A'], ['Enchantment', 'E']];
 
@@ -58,7 +61,9 @@ export function toRecord(c) {
   const ci = 'WUBRG'.split('').filter(x => (c.color_identity || []).includes(x)).join('');
   const rec = [name, cost(manaCost), code, ci, flags, c.oracle_id || '', pairCode(text, frontType)];
   const limit = copyLimit(text);
-  if (limit) rec.push(limit);
+  const made = code === 'L' ? landColors(c.produced_mana, text) : '';
+  if (limit || made) rec.push(limit);
+  if (made) rec.push(made);
   return rec;
 }
 
@@ -81,6 +86,8 @@ export function sanityCheck(list) {
   const withId = list.filter(r => r[5]).length;
   if (withId < list.length * 0.99) problems.push(`only ${withId} of ${list.length} cards have IDs`);
   if (!list.some(r => r[4] & FLAG.BANNED)) problems.push('no banned cards found');
+  const tower = list.find(r => r[0] === 'Command Tower');
+  if (tower && !/W/.test(tower[8] || '')) problems.push('lands are missing the colours they make (Command Tower)');
   return problems;
 }
 

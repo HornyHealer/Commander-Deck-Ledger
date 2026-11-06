@@ -94,6 +94,16 @@ Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text b
 
 The site opens on a dark "Defragmenting" screen (in `index.html`, so it shows before any code loads) that stays until the decks are in, for at least about a second. It then breaks into dark blocks that drop out while the page glitches in. Switching views, opening a popup and each card image finishing loading play a short Marathon-style glitch: blocks dropping out in random order, red and cyan copies cut into horizontal slices sliding together, and scan lines (`playGlitch` and `glitchImage` in `js/src/10-glitch.js`). All of it is skipped on devices set to reduce motion, and the automatic tests run with reduced motion except `tests/motion.spec.js`, which tests the effects.
 
+## Stats tab
+
+Each deck has a **Stats** tab:
+
+- **Colors**: for each of the deck's colors, its share of the colored mana symbols in your spells (hybrid symbols count half for each color; both halves of split cards count) beside its share of what your lands make. A land that makes two colors counts for both; fetch lands count for the basic types they search for, and "any basic land" fetches count for all of the deck's colors. When a color's land share is more than 10 points below its symbol share, it's flagged as having few sources.
+- **Mana curve**: spells by mana value (0 to 7+), each bar split by card type, not counting lands or the commander, with the average mana value. The chart colors are a fixed, colorblind-checked order (`--series-1` to `--series-8`); "Counts by type" opens a table with the exact numbers.
+- **Sample hand**: seven random cards from the deck (not the commander), with New hand, Mulligan (London rule: draw seven, put one on the bottom per mulligan; the first mulligan is free, as in multiplayer Commander) and Draw a card.
+
+Land colors come from the card list: each land's record ends with the colors it makes (`landColors` in `js/card-rules.js`, from Scryfall's `produced_mana`, or the basic types a fetch land finds).
+
 ## Library tools
 
 Above the decks (once there are two or more): a search box that finds decks by name, commander or description, or by a card in a deck's current list (every word has to match; punctuation is ignored, so "nghathrod" finds Captain N'ghathrod; matching cards are listed on the tile; Escape clears it), and a sort menu (last changed, deck name, commander, or bracket from high to low), remembered in that browser. The pin button on each tile keeps a deck at the top whatever the sort. A pin syncs with the account but isn't a change to the deck: it doesn't move "last change" or add to the history.

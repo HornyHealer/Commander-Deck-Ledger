@@ -7,7 +7,7 @@ const IDX = new Map();
 const OID = new Map(); // Scryfall oracle ID -> index in CARDS
 const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
 function indexCards(list) {
-  CARDS = Array.isArray(list) ? list : []; IDX.clear(); OID.clear();
+  CARDS = Array.isArray(list) ? list : []; IDX.clear(); OID.clear(); landDataKnown = null;
   CARDS.forEach((r, i) => {
     if (r[5]) OID.set(r[5], i);
     const k = norm(r[0]);
@@ -23,14 +23,16 @@ const rec = n => { const i = IDX.get(norm(n)); return i === undefined ? null : C
 const canon = n => { const r = rec(n); return r ? r[0] : n.trim(); };
 const ciOf = n => { const r = rec(n); return r ? r[3] : ""; };
 const typeOf = n => { const r = rec(n); return r ? r[2] : "O"; };
+// Mana value. A split card (Fire // Ice) counts both halves, as the rules do; other two-faced cards only list
+// their front face's cost.
 function cmcOf(n) {
   const r = rec(n); if (!r || !r[1]) return 0;
   let t = 0;
-  for (const s of r[1].split(" // ")[0].split(" ")) { if (/^\d+$/.test(s)) t += +s; else if (s && s !== "X" && s !== "Y") t += 1; }
+  for (const s of r[1].replace(/ \/\/ /g, " ").split(" ")) { const g = s.match(/^(\d+)(?:\/[WUBRG])?$/); if (g) t += +g[1]; else if (s && s !== "X" && s !== "Y") t += 1; }
   return t;
 }
 const isBasic = n => BASICS.has(norm(n));
-// Card records: [name, cost, type, colorIdentity, flags, oracleId, pairCode, copyLimit] (see scripts/build-cards.mjs)
+// Card records: [name, cost, type, colorIdentity, flags, oracleId, pairCode, copyLimit, landColors] (see scripts/build-cards.mjs)
 const RULES = window.CardRules; // js/card-rules.js, shared with the card-list builder
 const F = RULES.FLAG;
 const flagsOf = r => (r ? (r[4] | 0) : 0);

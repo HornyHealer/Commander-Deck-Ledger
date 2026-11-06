@@ -166,16 +166,18 @@ function renderDeck(d) {
       ${tabBtn("removed", "Removed", removed.reduce((a, r) => a + r.q, 0), true)}
       ${tabBtn("printed", "Owned", printedTotal(d))}
       ${tabBtn("history", "History", histCount)}
+      ${tabBtn("stats", "Stats", "")}
     </div>`;
   if (S.tab === "current") h += renderCurrent(d);
   else if (S.tab === "removed") h += renderRemoved(d, removed);
   else if (S.tab === "printed") h += renderPrinted(d);
+  else if (S.tab === "stats") h += renderStats(d);
   else h += renderHistory(d);
   h += `</div>${renderBench(d)}</div>`;
   return h;
 }
 function tabBtn(id, label, n, drop) {
-  return `<button class="tab${S.tab === id ? " on" : ""}" role="tab" aria-selected="${S.tab === id}" data-tab="${id}"${drop ? ' data-drop="out"' : ""}>${label}<span class="n">${n}</span></button>`;
+  return `<button class="tab${S.tab === id ? " on" : ""}" role="tab" aria-selected="${S.tab === id}" data-tab="${id}"${drop ? ' data-drop="out"' : ""}>${label}${n === "" ? "" : `<span class="n">${n}</span>`}</button>`;
 }
 
 function colorRank(n) { const ci = ciOf(n); if (!ci) return 99; if (ci.length === 1) return MANA_ORDER.indexOf(ci); return 10 + ci.length * 10 + MANA_ORDER.indexOf(ci[0]); }

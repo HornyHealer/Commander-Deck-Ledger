@@ -151,5 +151,5 @@ function glitchImage(img) {
   setTimeout(() => box.remove(), GLITCH_IMG_MS + 100);
 }
 // Card images glitch in when they load: the hover preview, Combos' card pictures and the artwork choices.
-const GLITCH_IMG_SEL = ".cardpv img, .cb-img, .print img, .artprev";
+const GLITCH_IMG_SEL = ".cardpv img, .cb-img, .print img, .artprev, .hand-card img";
 document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.matches(GLITCH_IMG_SEL) && !t.closest(".vfx-ghosts, .vfx-img")) glitchImage(t); }, true);

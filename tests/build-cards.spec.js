@@ -90,3 +90,18 @@ test('reads extra turns, mass land denial and suggested roles from the card text
   // Reminder text in parentheses is ignored.
   expect(has('Flying (This creature can\'t be blocked except by creatures with flying or reach. Draw a card.)', 'C')).toEqual([]);
 });
+
+test('records the colors each land makes, including what fetch lands find', async ({}, info) => {
+  test.skip(info.project.name !== 'desktop');
+  const land = (name, produced, text) => ({ name, layout: 'normal', type_line: 'Land', oracle_text: text || '', produced_mana: produced, color_identity: [], legalities: { commander: 'legal' }, oracle_id: name });
+  expect(m.toRecord(land('Command Tower', ['W', 'U', 'B', 'R', 'G']))[8]).toBe('WUBRG');
+  expect(m.toRecord(land('Overgrown Tomb', ['B', 'G']))).toEqual(['Overgrown Tomb', '', 'L', '', 0, 'Overgrown Tomb', '', 0, 'BG']);
+  expect(m.toRecord(land('Polluted Delta', undefined, 'Pay 1 life, Sacrifice Polluted Delta: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle.'))[8]).toBe('UB');
+  expect(m.toRecord(land('Evolving Wilds', undefined, '{T}, Sacrifice Evolving Wilds: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.'))[8]).toBe('*');
+  expect(m.toRecord(land('Maze of Ith', undefined, '{T}: Untap target attacking creature.')).length).toBe(7); // makes no mana: nothing recorded
+  // only lands get it
+  const rock = { name: 'Arcane Signet', layout: 'normal', type_line: 'Artifact', mana_cost: '{2}', oracle_text: '{T}: Add one mana of any color in your commander\'s color identity.', produced_mana: ['W', 'U'], color_identity: [], legalities: { commander: 'legal' }, oracle_id: 'x' };
+  expect(m.toRecord(rock).length).toBeLessThan(9);
+  // a list where Command Tower has lost its colors is refused
+  expect(m.sanityCheck([['Command Tower', '', 'L', '', 0, 'id', '']]).join()).toContain('Command Tower');
+});

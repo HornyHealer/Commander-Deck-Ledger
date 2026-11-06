@@ -31,7 +31,9 @@ function scryRec(c) {
   if (c.game_changer === true) flags |= F.GAME_CHANGER;
   flags |= RULES.textFlags(text, tc);
   const r = [c.name, scryCost(cost), tc, ci, flags, c.oracle_id || "", RULES.pairCode(text, frontType)];
-  const limit = RULES.copyLimit(text); if (limit) r.push(limit);
+  const limit = RULES.copyLimit(text), made = tc === "L" ? RULES.landColors(c.produced_mana, text) : "";
+  if (limit || made) r.push(limit);
+  if (made) r.push(made);
   return r;
 }
 const looked = new Set(); let lookTimer = null, looking = false;

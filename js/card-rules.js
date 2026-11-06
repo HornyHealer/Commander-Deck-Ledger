@@ -85,7 +85,19 @@
     return f;
   }
 
-  const api = { FLAG, pairCode, copyLimit, textFlags, stripReminders };
+  // The colours a land makes, as "WUBRGC" letters: Scryfall's produced_mana, or for fetch lands (which make no
+  // mana themselves) the basic land types they search for; "*" means any basic land, so any of the deck's colours.
+  function landColors(produced, text) {
+    const made = "WUBRGC".split("").filter(x => (produced || []).includes(x)).join("");
+    if (made) return made;
+    const m = stripReminders(text).match(/search your library for [^.]*?\bcards?\b/i);
+    if (!m) return "";
+    let out = "";
+    for (const [t, c] of [["Plains", "W"], ["Island", "U"], ["Swamp", "B"], ["Mountain", "R"], ["Forest", "G"]]) if (new RegExp("\\b" + t + "\\b").test(m[0])) out += c;
+    return out || (/\bbasic land\b/i.test(m[0]) ? "*" : "");
+  }
+
+  const api = { FLAG, pairCode, copyLimit, textFlags, stripReminders, landColors };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardRules = api;
 })(typeof window !== "undefined" ? window : globalThis);
