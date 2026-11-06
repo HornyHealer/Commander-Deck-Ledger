@@ -11,7 +11,7 @@ Track Commander decks: every swap, every cut, every card you own, cards on the w
 | `index.html` | The page shell |
 | `manifest.webmanifest`, `icons/`, `sw.js` | Install-as-an-app details and the offline copy |
 | `css/style.css` | All styling |
-| `js/app.js` | All of the app's code |
+| `js/src/` | The app's code, in 15 files by area (sync, deck screens, popups and so on). They're joined in name order into `js/app.js` by `node scripts/build-app.mjs` and share one scope. `js/app.js` is generated and not kept in the repository; the tests and the deploy build it. |
 | `js/card-rules.js` | Reads card text for partner rules, copy limits, extra turns, mass land denial and suggested roles; shared by the site and the card-list builder |
 | `js/firebase-config.js` | Firebase settings for accounts and sync |
 | `firestore.rules` | Database security rules to paste into Firebase |
@@ -92,7 +92,7 @@ Roles (ramp, draw, removal, wipes, tutors) are suggested from each card's text b
 
 ## Look and motion
 
-The site opens on a dark "Defragmenting" screen (in `index.html`, so it shows before any code loads) that stays until the decks are in, for at least about a second. It then breaks into dark blocks that drop out while the page glitches in. Switching views, opening a popup and each card image finishing loading play a short Marathon-style glitch: blocks dropping out in random order, red and cyan copies cut into horizontal slices sliding together, and scan lines (`playGlitch` and `glitchImage` in `js/app.js`). All of it is skipped on devices set to reduce motion, and the automatic tests run with reduced motion except `tests/motion.spec.js`, which tests the effects.
+The site opens on a dark "Defragmenting" screen (in `index.html`, so it shows before any code loads) that stays until the decks are in, for at least about a second. It then breaks into dark blocks that drop out while the page glitches in. Switching views, opening a popup and each card image finishing loading play a short Marathon-style glitch: blocks dropping out in random order, red and cyan copies cut into horizontal slices sliding together, and scan lines (`playGlitch` and `glitchImage` in `js/src/10-glitch.js`). All of it is skipped on devices set to reduce motion, and the automatic tests run with reduced motion except `tests/motion.spec.js`, which tests the effects.
 
 ## Backdrop, light/dark and the top bar
 

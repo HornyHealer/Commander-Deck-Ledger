@@ -2,6 +2,9 @@
 // Run locally with: npm install && npx playwright install chromium && npm test
 const { defineConfig, devices } = require('@playwright/test');
 
+// js/app.js is built from the files in js/src/; build it first so the tests always run the current code.
+require('child_process').execFileSync(process.execPath, [require('path').join(__dirname, 'scripts', 'build-app.mjs')], { stdio: 'inherit' });
+
 module.exports = defineConfig({
   testDir: 'tests',
   testIgnore: ['live/**', 'db-rules/**'], // the live check has its own settings (playwright.live.config.js); db-rules runs on Firebase's emulator

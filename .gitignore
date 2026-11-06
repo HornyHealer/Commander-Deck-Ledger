@@ -3,3 +3,5 @@ test-results/
 playwright-report/
 _site/
 health-results.json
+# built from js/src by scripts/build-app.mjs (the tests and the deploy build it)
+js/app.js
