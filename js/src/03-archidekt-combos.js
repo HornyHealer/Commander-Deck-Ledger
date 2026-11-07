@@ -76,7 +76,7 @@ async function openCombos(d) {
 const CSB = "https://commanderspellbook.com";
 function comboHtml(c, missing) {
   // Each card: its name, with its picture underneath.
-  const card = n => { const miss = missing && missing.includes(n); return `<span class="cb-card${miss ? " miss" : ""}"><span class="cb-name">${cardLink(n)}${miss ? "<em>missing</em>" : ""}</span><img class="cb-img" src="${esc(imgUrl(n))}" alt="${esc(n)}" loading="lazy" onerror="this.remove()"></span>`; };
+  const card = n => { const miss = missing && missing.includes(n); return `<span class="cb-card${miss ? " miss" : ""}"><span class="cb-name">${cardLink(n)}${miss ? "<em>missing</em>" : ""}</span><button type="button" class="cb-zoom" data-card="${esc(n)}" aria-label="Show ${esc(n)} bigger"><img class="cb-img" src="${esc(imgUrl(n))}" alt="" loading="lazy" onerror="this.parentElement.remove()"></button></span>`; };
   const cards = c.cards.map(card).join('<span class="cb-plus" aria-hidden="true">+</span>');
   const extra = c.templates.length ? `<span class="cb-plus" aria-hidden="true">+</span><span class="cb-card tmpl"><span class="cb-name">${c.templates.map(esc).join(", ")}</span></span>` : "";
   const prod = c.produces.slice(0, 4).map(p => `<span class="cb-prod">${esc(p)}</span>`).join("") + (c.produces.length > 4 ? `<span class="cb-prod more">+${c.produces.length - 4} more</span>` : "");

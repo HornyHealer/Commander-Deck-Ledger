@@ -168,6 +168,13 @@ test('Combos lists the combos in a deck and one card away, and counts two-card c
   await expect(dlg.locator('.combo').first().locator('.cb-link')).toHaveAttribute('href', 'https://commanderspellbook.com/combo/1414-2730/');
   // Each card shows its picture under its name.
   await expect(dlg.locator('.combo').first().locator('.cb-img')).toHaveCount(2);
+  // Clicking a picture shows it bigger over the popup; closing that leaves the popup open.
+  await dlg.locator('.combo').first().locator('.cb-zoom').first().click();
+  await expect(page.locator('.cardpv.tap')).toBeVisible();
+  await expect(page.locator('.cardpv img')).toHaveAttribute('alt', "Thassa's Oracle");
+  await page.locator('.cardpv .pv-close').click();
+  await expect(page.locator('.cardpv')).toBeHidden();
+  await expect(dlg).toBeVisible();
   // Combos one card away stay hidden until asked for.
   await expect(dlg.locator('.cb-card.miss')).toHaveCount(0);
   await dlg.locator('[data-act="combos-possible"]').click();

@@ -628,6 +628,11 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .cb-name { font-weight: 600; font-size: 13px; line-height: 1.25; min-height: 2.5em; overflow-wrap: anywhere; }
 .cb-card em { display: block; margin-top: 2px; font: 500 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; font-style: normal; color: var(--warn); }
 .cb-img { width: 132px; aspect-ratio: 488 / 680; border-radius: 6px; background: var(--sunk); display: block; }
+.cb-zoom { all: unset; box-sizing: border-box; display: block; cursor: zoom-in; border-radius: 6px; }
+.cb-zoom:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; }
+.cb-zoom .cb-img { transition: transform .12s; }
+.cb-zoom:hover .cb-img { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) { .cb-zoom .cb-img, .hand-card img { transition: none; } }
 .cb-card.miss .cb-img { outline: 2px dashed var(--warn); outline-offset: 2px; opacity: .85; }
 .cb-card.tmpl { width: auto; max-width: 180px; }
 .cb-card.tmpl .cb-name { font-weight: 400; color: var(--muted); }

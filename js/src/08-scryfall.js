@@ -74,7 +74,7 @@ function cardNameFrom(el) {
 }
 // Card picture previews. With a mouse, hovering a card name shows its picture beside the pointer, large enough
 // to read. Tapping a card name on a phone, or clicking a card in the sample hand, opens it big in the middle of
-// the screen with "Open on Scryfall" and "Close" below it; tapping anywhere else or Escape closes it.
+// the screen with "Open on Scryfall" and "Close" below it (so do the card pictures in Combos); tapping anywhere else or Escape closes it.
 let pv = null, pvTimer = null, pvFor = null;
 function pvEl() {
   if (!pv) {
@@ -132,7 +132,7 @@ document.addEventListener("click", e => {
     if (e.target.closest(".pv-link")) { setTimeout(closePv, 0); return; }
     e.preventDefault(); e.stopPropagation(); closePv(); return;
   }
-  const hc = e.target.closest && e.target.closest(".hand-card");
+  const hc = e.target.closest && e.target.closest(".hand-card, .cb-zoom");
   if (hc) { e.preventDefault(); return openPv(hc.dataset.card); }
   if (canHover) return;
   const el = e.target.closest && e.target.closest(".row .nm > span:first-child"); if (!el) return;

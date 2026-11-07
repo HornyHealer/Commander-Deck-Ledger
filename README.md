@@ -82,7 +82,7 @@ Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen
 
 ## Combos
 
-The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card), with the one-card-away list tucked behind a **Show possible combos** button. Each combo shows its cards with their pictures, what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
+The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card), with the one-card-away list tucked behind a **Show possible combos** button. Each combo shows its cards with their pictures (click or tap one to see it bigger), what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
 
 ## Bracket and roles
 
@@ -100,7 +100,7 @@ Each deck has a **Stats** tab:
 
 - **Colors**: for each of the deck's colors, its share of the colored mana symbols in your spells (hybrid symbols count half for each color; both halves of split cards count) beside its share of what your lands make. A land that makes two colors counts for both; fetch lands count for the basic types they search for, and "any basic land" fetches count for all of the deck's colors. When a color's land share is more than 10 points below its symbol share, it's flagged as having few sources.
 - **Mana curve**: spells by mana value (0 to 7+), each bar split by card type, not counting lands or the commander, with the average mana value. The chart colors are a fixed, colorblind-checked order (`--series-1` to `--series-8`); "Counts by type" opens a table with the exact numbers.
-- **Sample hand**: seven random cards from the deck (not the commander), with New hand, Mulligan (London rule: draw seven, put one on the bottom per mulligan; the first mulligan is free, as in multiplayer Commander) and Draw a card.
+- **Sample hand**: seven random cards from the deck (not the commander; click or tap one to see it bigger), with New hand, Mulligan (London rule: draw seven, put one on the bottom per mulligan; the first mulligan is free, as in multiplayer Commander) and Draw a card.
 
 Land colors come from the card list: each land's record ends with the colors it makes (`landColors` in `js/card-rules.js`, from Scryfall's `produced_mana`, or the basic types a fetch land finds).
 
