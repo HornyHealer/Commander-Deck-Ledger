@@ -115,6 +115,15 @@ Above the decks (once there are two or more): a search box that finds decks by n
 - **Phones**: the top bar is one even row of icon buttons with short labels.
 - **Card bin**: folded away under its heading so the decks are the focus; opening it is remembered (`cdl-bin-open`). The tests start with it open.
 
+## Keeping things current
+
+- **Dependabot** (`.github/dependabot.yml`) checks once a month for new versions of the steps the workflows use and of the test tools, and opens one grouped pull request for each. The tests run on it automatically; merge it when they pass. Nothing changes until it's merged, and a proposal never deploys anything by itself.
+- **By hand, now and then:**
+  - The Firebase version the site loads from Google: `FB` in `js/src/07-sync.js` and the list in `sw.js` (12.19.0, the newest 12.x as of November 2026). Firebase 13 is a major version; upgrade it on its own and test sign-in, sync and App Check.
+  - The versions the `rules` job installs (`firebase-tools`, `@firebase/rules-unit-testing`, `firebase`).
+  - The Node version in the workflows (22, supported until April 2027).
+- GitHub stopped supporting the older Node 20 that workflow steps used to run on; every step now runs on Node 24.
+
 ## Publishing
 
 Every push to `main` runs the automatic tests on GitHub. The site is published to GitHub Pages only if they pass. See `.github/workflows/test-and-deploy.yml`.

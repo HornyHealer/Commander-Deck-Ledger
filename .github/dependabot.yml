@@ -1,0 +1,26 @@
+# Dependabot: once a month, proposes updates to the site's building blocks as pull requests.
+# Each kind comes as one grouped proposal; the automatic tests run on it, and nothing changes until it's merged.
+#   github-actions  the steps the workflows use (checkout, Node, Pages deploy, the Cloudflare deploy, ...)
+#   npm             the test tools in package.json (Playwright)
+# Not covered (check these by hand now and then; see README "Keeping things current"): the Firebase version the
+# site loads (FB in js/src/07-sync.js and sw.js), the versions the rules job installs, and the Node version (22).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'Update workflow steps'
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      test-tools:
+        patterns: ['*']
+    commit-message:
+      prefix: 'Update test tools'
