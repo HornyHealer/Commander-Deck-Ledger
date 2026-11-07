@@ -4,13 +4,18 @@
 const ARCH_PROXY = "https://cdl-archidekt.deckledger.workers.dev/";
 const archId = s => { const t = String(s || "").trim(); const m = t.match(/archidekt\.com\/(?:api\/)?decks\/(\d+)/i); return m ? m[1] : /^\d{1,12}$/.test(t) ? t : ""; };
 const ARCH_MSG = {
-  "bad-link": "That doesn't look like an Archidekt deck link. It should look like archidekt.com/decks/12345/deck-name.",
+  "bad-link": "That doesn't look like an Archidekt or shared deck link. It should look like archidekt.com/decks/12345/deck-name, or a shared deck link from this site.",
+  "share-missing": "That shared deck isn't there. The link may be mistyped, or its owner stopped sharing it.",
+  "share-off": "Couldn't reach shared decks just now. Check your connection, or paste the list instead.",
+  "share-none": "Shared decks aren't set up on this copy of the site. Paste the list instead.",
+  "share-err": "Couldn't open that shared deck. Try again in a minute, or paste the list instead.",
   "not-found": "Archidekt couldn't find that deck. If it's private, set it to public or unlisted on Archidekt, or paste the list instead.",
   private: "That deck is private on Archidekt. Set it to public or unlisted there, or paste the list instead.",
   empty: "That deck has no cards in it yet.",
   network: "Couldn't reach the import service. Check your connection, or paste the list instead.",
 };
 async function fetchArchidekt(link) {
+  const sid = shareIdOf(link); if (sid) return fetchShare(sid); // a shared deck link from this site
   const id = archId(link); if (!id) throw new Error("bad-link");
   let res; try { res = await fetch(ARCH_PROXY + "?deck=" + encodeURIComponent(id)); } catch { throw new Error("network"); }
   let body = {}; try { body = await res.json(); } catch {}
@@ -31,7 +36,7 @@ async function archFetch(where, btn) {
     if (where === "n" && S.dialog && S.dialog.kind === "new") {
       const dl = S.dialog; dl.text = deck.text; dl.link = link.trim(); dl.cmdTouched = false;
       const nm = $("#n-name"); if (nm && !nm.value.trim() && deck.name) dl.name = deck.name; else if (nm) dl.name = nm.value;
-      const ds = $("#n-desc"); if (ds) dl.desc = ds.value;
+      const ds = $("#n-desc"); if (ds) dl.desc = ds.value.trim() ? ds.value : String(deck.desc || "").slice(0, 280);
       renderDialog();
     } else if (where === "u" && S.dialog && S.dialog.kind === "update") {
       const dl = S.dialog; const full = /^https?:\/\//i.test(link.trim()) ? link.trim() : "https://archidekt.com/decks/" + deck.id; dl.text = deck.text; dl.link = full; dl.fetchedLink = full; dl.fetchedName = deck.name; dl.paste = false;
@@ -42,7 +47,7 @@ async function archFetch(where, btn) {
       const ta = $("#chk-list"); if (ta) ta.value = CHECK_TEXT; updateCheck();
     }
     say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
-  } catch (err) { say(archMsg(err), true); if (!["bad-link", "not-found", "private", "empty", "network"].includes(err && err.message)) reportError("archidekt", "Archidekt import: " + (err && err.message), where); }
+  } catch (err) { say(archMsg(err), true); if (!["bad-link", "not-found", "private", "empty", "network", "share-missing", "share-off", "share-none", "share-err"].includes(err && err.message)) reportError("archidekt", "Archidekt import: " + (err && err.message), where); }
   finally { const b = $(`[data-arch="${where}"]`); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
 }
 

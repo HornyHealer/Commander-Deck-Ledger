@@ -50,7 +50,7 @@ test('New deck: a name already typed in is kept, and bad links get a clear messa
   await page.click('[data-act="new"]');
   await page.fill('#n-link', 'not a link');
   await page.click('[data-arch="n"]');
-  await expect(page.locator('#n-fetch-msg')).toContainText("doesn't look like an Archidekt deck link");
+  await expect(page.locator('#n-fetch-msg')).toContainText("doesn't look like an Archidekt or shared deck link");
   expect(asked).toEqual([]);
   await page.fill('#n-link', 'https://archidekt.com/decks/999/private');
   await page.press('#n-link', 'Enter');

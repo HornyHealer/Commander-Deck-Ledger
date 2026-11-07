@@ -47,6 +47,8 @@ function renderDialog() {
       <details class="u-paste"${dl.paste ? " open" : ""}><summary>Or paste a list instead</summary><textarea class="field" id="u-list" placeholder="Paste the full current list">${esc(dl.text || "")}</textarea></details>
       <div id="u-diff"></div></div>
     <footer><button class="btn ghost" data-dlg="close">Cancel</button>${saveLink ? `<button class="btn" data-dlg="to-bench-save" id="u-go-save" disabled>Save link &amp; put changes on the bench</button>` : ""}<button class="btn primary" data-dlg="to-bench" id="u-go" disabled>Put changes on the bench</button></footer></div>`;
+  } else if (dl.kind === "share") {
+    h = shareDialogHtml(dl);
   } else if (dl.kind === "combos") {
     h = combosDialogHtml(dl);
   } else if (dl.kind === "binadd") {

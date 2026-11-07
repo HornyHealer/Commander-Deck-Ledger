@@ -4,7 +4,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, deleteDoc, writeBatch } from 'firebase/firestore';
 
 let env;
 before(async () => {
@@ -82,4 +82,48 @@ test('nothing can be stored anywhere else', async () => {
   await assertFails(setDoc(doc(db, 'users/alice/meta/other'), { a: 1 }));
   await assertFails(setDoc(doc(db, 'users/alice/decks/d1/notes/x'), { a: 1 }));
   await assertFails(setDoc(doc(db, 'public/x'), { a: 1 }));
+});
+
+// ---- shared decks ----
+const SID = 'AbCdEfGhIjKlMnOpQrStUv'; // 22 characters, like the site makes
+const share = (o = {}) => ({ owner: 'alice', v: 1, name: 'Test', commanders: ['Zagras, Thief of Heartbeats'], desc: 'Goes fast', cur: list(100), combos: { count: 1, at: 1, two: [{ cards: ['A', 'B'], produces: ['Win'] }] }, at: 1, ...o });
+const shareRef = (db, id = SID) => doc(db, 'shares/' + id);
+
+test('you can share a deck, update the copy and stop sharing it', async () => {
+  const db = me();
+  await assertSucceeds(setDoc(shareRef(db), share()));
+  const { combos, ...noCombos } = share({ name: 'Renamed', at: 2 }); // combos are optional
+  await assertSucceeds(setDoc(shareRef(db), noCombos));
+  await assertSucceeds(deleteDoc(shareRef(db)));
+  await assertSucceeds(deleteDoc(shareRef(db))); // already gone: still fine
+});
+test('anyone with the link can read a shared deck, signed in or not, but nobody can list them', async () => {
+  await env.withSecurityRulesDisabled(c => setDoc(shareRef(c.firestore()), share()));
+  const bob = env.authenticatedContext('bob').firestore(), anon = env.unauthenticatedContext().firestore();
+  for (const db of [bob, anon]) {
+    await assertSucceeds(getDoc(shareRef(db)));
+    await assertFails(getDocs(collection(db, 'shares')));
+  }
+});
+test('only the person who shared a deck can change or remove it', async () => {
+  await env.withSecurityRulesDisabled(c => setDoc(shareRef(c.firestore()), share()));
+  const bob = env.authenticatedContext('bob').firestore(), anon = env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(shareRef(bob), share({ owner: 'bob' })));
+  await assertFails(setDoc(shareRef(bob), share()));
+  await assertFails(deleteDoc(shareRef(bob)));
+  await assertFails(setDoc(shareRef(anon), share()));
+  await assertFails(deleteDoc(shareRef(anon)));
+  await assertFails(setDoc(shareRef(anon, 'ZyXwVuTsRqPoNmLkJiHgFe'), share()));
+});
+test('a share must be in your name, have a proper id and stay within its limits', async () => {
+  const db = me();
+  await assertFails(setDoc(shareRef(db), share({ owner: 'bob' })));
+  await assertFails(setDoc(shareRef(db, 'short'), share()));
+  await assertFails(getDoc(shareRef(db, 'short')));
+  await assertSucceeds(setDoc(shareRef(db), share({ cur: list(500) })));
+  await assertFails(setDoc(shareRef(db), share({ cur: list(501) })));
+  await assertFails(setDoc(shareRef(db), share({ name: 'x'.repeat(201) })));
+  await assertFails(setDoc(shareRef(db), share({ commanders: ['a', 'b', 'c', 'd', 'e'] })));
+  await assertFails(setDoc(shareRef(db), share({ history: [] })));
+  await assertFails(setDoc(shareRef(db), share({ combos: { count: 1, two: list(101) } })));
 });

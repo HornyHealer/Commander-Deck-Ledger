@@ -5,6 +5,8 @@ rules_version = '2';
 //   a deck's current list   500 different cards        a deck's owned list   2,000 different cards
 //   a deck's history        40 pieces of up to 500 changes (about 20,000 changes)
 //   the card bin            5 sections of up to 7,000 entries (the site stops at 30,000 in all)
+// Shared decks (shares/{id}) can be read by anyone who has the link, but not listed, and only changed or
+// removed by the person who shared them. A share id is 22 random characters, so links can't be guessed.
 // Tested on every change by tests/db-rules (run on GitHub against Firebase's own rules emulator).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,6 +21,14 @@ service cloud.firestore {
     }
     function pieceOK(p, n) { return p.keys().hasOnly(['p']) && p.p is list && p.p.size() <= n; }
     function binOK(m) { return listUpTo(m, 'sigs', 5) && listUpTo(m, 'cards', 1000); }
+    function textUpTo(m, key, n) { return m.get(key, '') is string && m.get(key, '').size() <= n; }
+    function shareOK(s) {
+      return s.keys().hasOnly(['owner', 'v', 'name', 'commanders', 'desc', 'cur', 'combos', 'at'])
+        && s.owner == request.auth.uid
+        && s.cur is list && s.cur.size() <= 500
+        && textUpTo(s, 'name', 200) && textUpTo(s, 'desc', 4000) && listUpTo(s, 'commanders', 4)
+        && s.get('combos', {}) is map && listUpTo(s.get('combos', {}), 'two', 100);
+    }
 
     match /users/{uid}/decks/{deck} {
       allow read, delete: if owner(uid);
@@ -35,6 +45,12 @@ service cloud.firestore {
     match /users/{uid}/bin/{piece} {
       allow read, delete: if owner(uid);
       allow create, update: if owner(uid) && pieceOK(request.resource.data, 7000);
+    }
+    match /shares/{id} {
+      allow get: if id.matches('^[A-Za-z0-9_-]{22}$'); // anyone with the link, signed in or not; no "list"
+      allow create: if request.auth != null && id.matches('^[A-Za-z0-9_-]{22}$') && shareOK(request.resource.data);
+      allow update: if request.auth != null && resource.data.owner == request.auth.uid && shareOK(request.resource.data);
+      allow delete: if request.auth != null && (resource == null || resource.data.owner == request.auth.uid);
     }
     // Anything else is refused, so an account can't be used to store other things.
   }

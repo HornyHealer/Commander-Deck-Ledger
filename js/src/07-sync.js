@@ -340,6 +340,7 @@ function cloudFlush() {
     const why = deckOver(d, pieces); setBlocked("d:" + d.id, why);
     if (why) continue;
     synced.set(d.id, d.rev || 0);
+    writeShare(d);
     if (lazy) {
       // History not read here: keep the saved pieces and put this device's new entries in the deck record.
       const info = histInfo.get(d.id);

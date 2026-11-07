@@ -35,7 +35,7 @@ function renderLibrary() {
     const ci = deckCI(d); const changes = changeCount(d); const t = total(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
     const cmd = cmdOf(d), hits = (matches.get(d.id) || {}).cards || [];
     const pin = `<button class="pinbtn${d.pinned ? " on" : ""}" data-act="pin" data-id="${esc(d.id)}" aria-pressed="${!!d.pinned}" aria-label="${d.pinned ? "Unpin" : "Pin"} ${esc(d.name)}" title="${d.pinned ? "Unpin from the top" : "Pin to the top"}">${ICONS.pin}</button>`;
-    const arch = d.link ? `<a class="arch" href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : `<button class="arch add" data-editlink="${esc(d.id)}">${ICONS.plus}Archidekt link</button>`;
+    const arch = d.link ? `<a class="arch" href="${esc(d.link)}" target="_blank" rel="noopener">${linkName(d.link)} ${ICONS.ext}</a>` : `<button class="arch add" data-editlink="${esc(d.id)}">${ICONS.plus}Archidekt link</button>`;
     const art = artNameOf(d);
     return `<div class="deckbox${art ? " has-art" : ""}${d.pinned ? " pinned" : ""}" role="link" tabindex="0" aria-label="Open ${esc(d.name)}" data-open="${esc(d.id)}">${art ? `<img class="tile-art" src="${esc(artSrcOf(d))}" alt="" loading="lazy" style="object-position:center ${esc(d.artPos || "center")}">` : ""}${ciBand(ci)}<span class="tile-no">${String(i + 1).padStart(2, "0")}</span><div class="body">
       <div class="cmd">${esc(cmd)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>

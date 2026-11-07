@@ -11,7 +11,7 @@ Track Commander decks: every swap, every cut, every card you own, cards on the w
 | `index.html` | The page shell |
 | `manifest.webmanifest`, `icons/`, `sw.js` | Install-as-an-app details and the offline copy |
 | `css/style.css` | All styling |
-| `js/src/` | The app's code, in 15 files by area (sync, deck screens, popups and so on). They're joined in name order into `js/app.js` by `node scripts/build-app.mjs` and share one scope. `js/app.js` is generated and not kept in the repository; the tests and the deploy build it. |
+| `js/src/` | The app's code, in 17 files by area (sync, deck screens, stats, sharing, popups and so on). They're joined in name order into `js/app.js` by `node scripts/build-app.mjs` and share one scope. `js/app.js` is generated and not kept in the repository; the tests and the deploy build it. |
 | `js/card-rules.js` | Reads card text for partner rules, copy limits, extra turns, mass land denial and suggested roles; shared by the site and the card-list builder |
 | `js/firebase-config.js` | Firebase settings for accounts and sync |
 | `firestore.rules` | Database security rules to paste into Firebase |
@@ -83,6 +83,15 @@ Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen
 ## Combos
 
 The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card), with the one-card-away list tucked behind a **Show possible combos** button. Each combo shows its cards with their pictures (click or tap one to see it bigger), what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
+
+## Sharing a deck
+
+**Share** on a deck makes a read-only link (`…/#share-` and 22 random characters). Anyone with the link, signed in or not, sees the commander, description, list, Stats and the combos you last checked, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin aren't shared.
+
+- The copy lives at `shares/{id}` in Firestore. `firestore.rules` lets anyone read one share by its id but not list them, and only the person who shared it can change or remove it.
+- The copy updates a moment after each save of the deck. **Stop sharing** (or deleting the deck) removes it, and the old link stops working; sharing again makes a new link.
+- Share links work anywhere an Archidekt link does: New deck, Check a list and Update from Archidekt. A deck added from a share link keeps it, so Update pulls in your friend's later changes.
+- Sharing needs you to be signed in, since the copy is kept with your account.
 
 ## Bracket and roles
 

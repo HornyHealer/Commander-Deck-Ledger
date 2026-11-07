@@ -13,6 +13,7 @@ document.addEventListener("click", e => {
   const d = S.deckId && S.decks.get(S.deckId);
   if (t.dataset.open) return go("deck", t.dataset.open);
   if (t.dataset.tab) { if (S.tab !== t.dataset.tab) glitchNext(".tabpanel"); S.tab = t.dataset.tab; S.filter = ""; S.confirm = null; return render(); }
+  if (t.dataset.sharetab) { if (S.shareTab !== t.dataset.sharetab) glitchNext(".tabpanel"); S.shareTab = t.dataset.sharetab; return render(); }
   if (t.dataset.alltype) { const s = S.allTypes || (S.allTypes = new Set()); const g = t.dataset.alltype; s.has(g) ? s.delete(g) : s.add(g); return render(); }
   if (t.dataset.allcolor) { const s = S.allColors || (S.allColors = new Set()); const c = t.dataset.allcolor; s.has(c) ? s.delete(c) : s.add(c); return render(); }
   if (t.dataset.colormode) { S.colorMode = t.dataset.colormode; return render(); }
@@ -82,9 +83,10 @@ document.addEventListener("click", e => {
   if (act === "all") { S.allFilter = ""; return go("all"); }
   // Pinning isn't a change to the deck: it syncs, but doesn't move "last change" or add to the history.
   if (act === "pin") { const pd = S.decks.get(t.dataset.id); if (pd) { pd.pinned = !pd.pinned; save(pd); toast(pd.pinned ? `Pinned ${pd.name} to the top.` : `Unpinned ${pd.name}.`); render(); } return; }
-  if (act === "hand-new" && d) { newHand(d, 0); return render(); }
-  if (act === "hand-mull" && d) { newHand(d, (S.hand && S.hand.id === d.id ? S.hand.mull : 0) + 1); return render(); }
-  if (act === "hand-draw" && d && S.hand && S.hand.id === d.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
+  const hd = d || shareDeck(); // the sample hand works on a shared deck too
+  if (act === "hand-new" && hd) { newHand(hd, 0); return render(); }
+  if (act === "hand-mull" && hd) { newHand(hd, (S.hand && S.hand.id === hd.id ? S.hand.mull : 0) + 1); return render(); }
+  if (act === "hand-draw" && hd && S.hand && S.hand.id === hd.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
   if (act === "theme") return setTheme(themeNow() === "dark" ? "light" : "dark");
   if (act === "bin-fold") { S.binOpen = !S.binOpen; glitchNext(".bin"); try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");
@@ -102,12 +104,14 @@ document.addEventListener("click", e => {
   if (act === "arch-fetch") return archFetch(t.dataset.arch, t);
   if (act === "home") return go("library");
   if (act === "edit" && d) return openDialog({ kind: "edit", id: d.id });
-  if (act === "update" && d) { openDialog({ kind: "update", id: d.id }); if (d.link && archId(d.link)) archFetch("u", $('[data-arch="u"]')); return; }
+  if (act === "update" && d) { openDialog({ kind: "update", id: d.id }); if (d.link && (archId(d.link) || shareIdOf(d.link))) archFetch("u", $('[data-arch="u"]')); return; }
   if (act === "copy-cur" && d) { if (S.menu === false && $(".menu")) render(); return copyText(listText(d, d.cur, true), "Current list"); }
   if (act === "copy-printed" && d) return copyText(listText(d, d.printed.filter(p => S.printedFilter === "all" || (S.printedFilter === "orig" ? p.o === 0 : p.o === 1)), false), "Owned list");
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
   if (act === "combos" && d) return openCombos(d);
+  if (act === "share" && d) return openDialog({ kind: "share", id: d.id });
+  if (act && act.startsWith("share-")) return shareAct(act);
   if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
   if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
   if (act === "combos-possible" && S.dialog) { S.dialog.showPossible = !S.dialog.showPossible; renderDialog(); if (S.dialog.showPossible) { const el = $("#cb-possible"); if (el) { el.scrollIntoView({ block: "start", behavior: "smooth" }); if (!reduceMotion()) setTimeout(() => playGlitch(el, "pop"), 260); } } return; }
@@ -173,10 +177,12 @@ document.addEventListener("click", e => {
   if (dlg === "ba-go") { const p = parseList(($("#ba-list") || {}).value || ""); const n = addToBin(p.cards); closeDialog(); render(); return toast(n ? `Added ${n} card${n > 1 ? "s" : ""} to the card bin.` : "Nothing to add."); }
   if (dlg === "del") { S.dialog.del = true; return renderDialog(); }
   if (dlg === "del-no") { S.dialog.del = false; return renderDialog(); }
+  if (dlg && dlg.startsWith("sh-")) return shareDlg(dlg);
   if (dlg === "del-yes") {
     const id = S.dialog.id; const dd = S.decks.get(id); const keepEl = $("#del-keep"); const keep = !!(keepEl && keepEl.checked);
     let kept = 0;
     if (dd && keep) { const now = Date.now(); for (const p of dd.printed) if (p.q > 0) { S.loose.cards.push({ n: p.n, q: p.q, from: dd.name, at: now }); kept += p.q; } saveLoose(); }
+    if (dd && dd.shareId) dropShare(dd.shareId); // its link stops working too
     closeDialog(); removeDeck(id); go("library"); return toast(kept ? `Deck deleted. ${kept} owned cards moved to the card bin.` : "Deck deleted.");
   }
   if (dlg === "to-bench" || dlg === "to-bench-save") {
@@ -270,5 +276,7 @@ document.addEventListener("drop", e => {
 });
 
 document.addEventListener("error", e => { const el = e.target; if (el && el.classList && (el.classList.contains("tile-art") || el.classList.contains("artprev"))) el.style.visibility = "hidden"; }, true);
+// A shared deck link pasted into the address bar while the site is open.
+window.addEventListener("hashchange", () => { if (shareIdOf(location.hash)) { closeDialog(); SHARE.id = ""; fromHash(); render(); window.scrollTo(0, 0); } });
 fromHash();
 boot();

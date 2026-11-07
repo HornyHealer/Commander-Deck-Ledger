@@ -20,6 +20,13 @@ export function writeBatch() {
 }
 const meta = { fromCache: false, hasPendingWrites: false };
 const docSnap = (id, data) => ({ id, exists: () => data !== undefined, data: () => (data === undefined ? undefined : clone(data)), metadata: meta });
+// One read of one record. The stand-in for the database rules: signed out, only shared decks can be read.
+export function getDoc(ref) {
+  return new Promise((res, rej) => setTimeout(() => {
+    if (!g.user && !ref.path.startsWith('shares/')) return rej(Object.assign(new Error('permission-denied'), { code: 'permission-denied' }));
+    g.reads = (g.reads || 0) + 1; res(docSnap(ref.id, g.store[ref.path]));
+  }, 20));
+}
 export function onSnapshot(ref, opts, next) {
   if (typeof opts === 'function') next = opts;
   let prev = null;

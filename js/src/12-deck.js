@@ -143,11 +143,12 @@ function renderDeck(d) {
   <div class="dhead"><div>
     <div class="eyebrow">${ciPips(ci)}${d.example ? '<span class="tag-ex">Example</span>' : ""}</div>
     <h2>${esc(cmd)}</h2>
-    <div class="dn">${esc(d.name)} · started ${fmtDate(d.createdAt)}${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">Archidekt ${ICONS.ext}</a>` : ""}</div>
+    <div class="dn">${esc(d.name)} · started ${fmtDate(d.createdAt)}${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">${linkName(d.link)} ${ICONS.ext}</a>` : ""}</div>
     ${d.desc ? `<p class="ddesc">${esc(d.desc)}</p>` : ""}
   </div><div class="actions">
     <button class="btn" data-act="update">${ICONS.down}Update from Archidekt</button>
     <button class="btn" data-act="combos">${ICONS.combo}Combos${deckCombos(d) ? `<span class="mono cb-count">${deckCombos(d).count}</span>` : ""}</button>
+    <button class="btn${d.shareId ? " on" : ""}" data-act="share">${ICONS.share}${d.shareId ? "Shared" : "Share"}</button>
     <button class="btn" data-act="edit">Edit details</button>
   </div></div>
   <div class="summary">

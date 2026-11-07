@@ -4,10 +4,10 @@
 function go(view, deckId) {
   if (deckId !== S.deckId) { S.benchOpen = false; S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
   S.view = view; S.deckId = deckId || null; S.filter = ""; S.confirm = null;
-  try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
+  try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "share" ? "#share-" + S.shareId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
   render(); window.scrollTo(0, 0);
 }
-function fromHash() { if (location.hash === "#all-cards") { S.view = "all"; return; } if (location.hash === "#check") { S.view = "check"; return; } const m = (location.hash || "").match(/^#deck-([A-Za-z0-9_-]+)$/); if (m) { S.view = "deck"; S.deckId = m[1]; } }
+function fromHash() { const sh = shareIdOf(location.hash); if (sh) { S.view = "share"; S.shareId = sh; return; } if (location.hash === "#all-cards") { S.view = "all"; return; } if (location.hash === "#check") { S.view = "check"; return; } const m = (location.hash || "").match(/^#deck-([A-Za-z0-9_-]+)$/); if (m) { S.view = "deck"; S.deckId = m[1]; } }
 
 // ---------- render ----------
 function render() {
@@ -28,11 +28,12 @@ function render() {
   if (S.ready && !S.live && !CLOUD.user) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;
   const d = S.deckId && S.decks.get(S.deckId);
   // Everything below the header sits in .view, which plays a short glitch when the view changes.
-  const viewKey = S.view + (S.view === "deck" ? ":" + S.deckId : "");
+  const viewKey = S.view + (S.view === "deck" ? ":" + S.deckId : S.view === "share" ? ":" + S.shareId : "");
   const glitch = S.ready && lastViewKey !== null && viewKey !== lastViewKey && !reduceMotion();
   lastViewKey = S.ready ? viewKey : null;
   html += `<div class="view">`;
-  if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
+  if (S.view === "share" && S.shareId) html += renderShare(); // someone else's deck: doesn't wait for your own
+  else if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
   else if (S.view === "check") html += renderCheck();
   else if (S.view === "deck" && d) html += historyReady(d.id) ? renderDeck(d) : deckOpening(d);
