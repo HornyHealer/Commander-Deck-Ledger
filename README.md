@@ -86,12 +86,13 @@ The **Combos** button on a deck page asks [Commander Spellbook](https://commande
 
 ## Sharing a deck
 
-**Share** on a deck makes a read-only link (`…/#share-` and 22 random characters). Anyone with the link, signed in or not, sees the commander, description, list, Stats and the combos you last checked, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin aren't shared.
+Signed in, every deck has a read-only link, and it's the deck's own address (`…/#share-` and 22 random characters), so you can copy it from the address bar or with **Share → Copy link**. When you open it, you get your deck as usual. Anyone else, signed in or not, sees the commander, description, list, Stats and the combos you last checked, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin aren't shared.
 
 - The copy lives at `shares/{id}` in Firestore. `firestore.rules` lets anyone read one share by its id but not list them, and only the person who shared it can change or remove it.
-- The copy updates a moment after each save of the deck. **Stop sharing** (or deleting the deck) removes it, and the old link stops working; sharing again makes a new link.
+- The copy updates a moment after the deck's list, name, description or combos change (owned-card changes don't rewrite it).
+- **Share → Make private** removes the copy, and the old link stops working; **Share it again** makes a new link. Deleting a deck removes its link too.
 - Share links work anywhere an Archidekt link does: New deck, Check a list and Update from Archidekt. A deck added from a share link keeps it, so Update pulls in your friend's later changes.
-- Sharing needs you to be signed in, since the copy is kept with your account.
+- Signed out, decks stay in your browser and their address is `#deck-…`, which only works for you.
 
 ## Bracket and roles
 

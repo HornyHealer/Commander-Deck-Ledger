@@ -35,52 +35,94 @@ async function seedShare(page, data = SHARED) {
   }, [SID, data]);
 }
 
-test('sharing a deck makes a read-only copy that follows changes, and stopping removes it', async ({ page }) => {
+async function signedInWithBackup(page) {
   await page.goto('/');
   await page.setInputFiles('#imp-file', BACKUP);
   await page.click('[data-dlg="imp-go"]');
   await page.locator('.signin-note [data-act="signin"]').click();
   await expect(page.locator('#sync-status')).toHaveText('Synced');
+}
+
+test('signed in, every deck gets a link: its own address, which follows changes', async ({ page }) => {
+  await signedInWithBackup(page);
+  const decks = await page.locator('.deckbox').count();
+  await expect.poll(async () => shares(await fakeStore(page)).length).toBe(decks);
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
-  await page.click('[data-act="share"]');
-  await page.click('[data-dlg="sh-make"]');
-  await expect(page.locator('#sh-link')).toHaveValue(/#share-[A-Za-z0-9_-]{22}$/);
-  const id = (await page.locator('#sh-link').inputValue()).split('#share-')[1];
-  await expect.poll(async () => (await fakeStore(page))['shares/' + id]?.owner).toBe('u-test');
+  await expect(page).toHaveURL(/#share-[A-Za-z0-9_-]{22}$/);
+  const id = page.url().split('#share-')[1];
   const doc = (await fakeStore(page))['shares/' + id];
+  expect(doc.owner).toBe('u-test');
   expect(Object.keys(doc).sort()).toEqual(['at', 'commanders', 'cur', 'desc', 'name', 'owner', 'v']);
   expect(doc.cur.every(c => Object.keys(c).join() === 'n,q')).toBe(true);
+  await page.click('[data-act="share"]');
+  await expect(page.locator('#sh-link')).toHaveValue(new RegExp('#share-' + id + '$'));
   await page.click('.sh-dialog [data-dlg="close"]');
-  await expect(page.locator('[data-act="share"]')).toHaveText(/Shared/);
 
-  // A change to the deck reaches the shared copy.
+  // A change to the deck reaches the shared copy; a change only to owned cards doesn't rewrite it.
   await page.click('[data-act="edit"]');
   await page.fill('#e-name', 'Rat Pack Deluxe');
   await page.click('[data-dlg="save-edit"]');
   await expect.poll(async () => (await fakeStore(page))['shares/' + id]?.name).toBe('Rat Pack Deluxe');
 
+  // Reloading the address opens it as your own deck, not the read-only view.
+  await page.reload();
+  await expect(page.locator('.dhead h2')).toBeVisible();
+  await expect(page.locator('[data-act="edit"]')).toBeVisible();
+  await expect(page.locator('[data-act="share-add"]')).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp('#share-' + id + '$'));
+});
+
+test('making a deck private removes its link; sharing again makes a new one', async ({ page }) => {
+  await signedInWithBackup(page);
+  await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
+  await expect(page).toHaveURL(/#share-/);
+  const id = page.url().split('#share-')[1];
   await page.click('[data-act="share"]');
   await page.click('[data-dlg="sh-stop"]');
   await page.click('[data-dlg="sh-stop-yes"]');
-  await expect(page.locator('.sh-dialog')).toContainText('Not shared yet');
-  await expect.poll(async () => shares(await fakeStore(page))).toEqual([]);
+  await expect(page.locator('.sh-dialog')).toContainText('This deck is private');
+  await expect.poll(async () => (await fakeStore(page))['shares/' + id]).toBeUndefined();
+  await expect(page).toHaveURL(/#deck-/);
+  await page.click('.sh-dialog [data-dlg="close"]');
+  await expect(page.locator('[data-act="share"]')).toHaveText(/Private/);
+  // It stays private after a reload (no new link is made by itself).
+  await expect.poll(async () => (await fakeStore(page))['users/u-test/decks/fixture-rats']?.noShare).toBe(true);
+  await page.reload();
+  await expect(page.locator('[data-act="share"]')).toHaveText(/Private/);
+  await page.click('[data-act="share"]');
+  await page.click('[data-dlg="sh-make"]');
+  await expect(page.locator('#sh-link')).toHaveValue(/#share-[A-Za-z0-9_-]{22}$/);
+  const id2 = (await page.locator('#sh-link').inputValue()).split('#share-')[1];
+  expect(id2).not.toBe(id);
+  await expect.poll(async () => (await fakeStore(page))['shares/' + id2]?.owner).toBe('u-test');
+  await expect(page).toHaveURL(new RegExp('#share-' + id2 + '$'));
 });
 
 test('deleting a shared deck removes its link too', async ({ page }) => {
-  await page.goto('/');
-  await page.setInputFiles('#imp-file', BACKUP);
-  await page.click('[data-dlg="imp-go"]');
-  await page.locator('.signin-note [data-act="signin"]').click();
-  await expect(page.locator('#sync-status')).toHaveText('Synced');
+  await signedInWithBackup(page);
+  await expect.poll(async () => shares(await fakeStore(page)).length).not.toBe(0);
+  const n = shares(await fakeStore(page)).length;
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
-  await page.click('[data-act="share"]');
-  await page.click('[data-dlg="sh-make"]');
-  await expect.poll(async () => shares(await fakeStore(page)).length).toBe(1);
-  await page.click('.sh-dialog [data-dlg="close"]');
   await page.click('[data-act="edit"]');
   await page.click('[data-dlg="del"]');
   await page.click('[data-dlg="del-yes"]');
-  await expect.poll(async () => shares(await fakeStore(page))).toEqual([]);
+  await expect.poll(async () => shares(await fakeStore(page)).length).toBe(n - 1);
+});
+
+test('a deck restored from someone else\'s backup gets its own link', async ({ page }) => {
+  // The backup's deck points at a link that belongs to another account.
+  const fs = require('fs');
+  const bk = JSON.parse(fs.readFileSync(BACKUP, 'utf8'));
+  const decks = bk.decks || bk;
+  const first = Array.isArray(decks) ? decks[0] : Object.values(decks)[0];
+  first.shareId = SID; first.shareSig = 'x';
+  await seedShare(page);
+  await page.goto('/');
+  await page.setInputFiles('#imp-file', { name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bk)) });
+  await page.click('[data-dlg="imp-go"]');
+  await page.locator('.signin-note [data-act="signin"]').click();
+  await expect.poll(async () => { const st = await fakeStore(page); return Object.values(st).filter(v => v && v.owner === 'u-test').length; }).toBe(await page.locator('.deckbox').count());
+  expect((await fakeStore(page))['shares/' + SID].owner).toBe('u-friend'); // theirs is untouched
 });
 
 test('signed out, the share popup asks you to sign in first', async ({ page }) => {

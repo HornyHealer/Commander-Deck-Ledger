@@ -6,8 +6,11 @@ export function getFirestore(app) { return { app }; }
 export function doc(db, ...parts) { return { kind: 'doc', path: parts.join('/'), id: parts[parts.length - 1] }; }
 export function collection(db, ...parts) { return { kind: 'col', path: parts.join('/') }; }
 const later = fn => new Promise(res => setTimeout(() => { fn(); res(); }, 20));
-export function setDoc(ref, data) { return later(() => { g.store[ref.path] = clone(data); g.save(); g.notify(); }); }
-export function deleteDoc(ref) { return later(() => { delete g.store[ref.path]; g.save(); g.notify(); }); }
+// Like the real rules, a shared deck can only be changed or removed by the account that shared it.
+const notYours = ref => ref.path.startsWith('shares/') && g.store[ref.path] && (!g.user || g.store[ref.path].owner !== g.user.uid);
+const denied = () => Promise.reject(Object.assign(new Error('permission-denied'), { code: 'permission-denied' }));
+export function setDoc(ref, data) { if (notYours(ref)) return denied(); return later(() => { g.store[ref.path] = clone(data); g.save(); g.notify(); }); }
+export function deleteDoc(ref) { if (notYours(ref)) return denied(); return later(() => { delete g.store[ref.path]; g.save(); g.notify(); }); }
 // Several writes that land together, as one change.
 export function writeBatch() {
   const ops = [];

@@ -148,7 +148,7 @@ function renderDeck(d) {
   </div><div class="actions">
     <button class="btn" data-act="update">${ICONS.down}Update from Archidekt</button>
     <button class="btn" data-act="combos">${ICONS.combo}Combos${deckCombos(d) ? `<span class="mono cb-count">${deckCombos(d).count}</span>` : ""}</button>
-    <button class="btn${d.shareId ? " on" : ""}" data-act="share">${ICONS.share}${d.shareId ? "Shared" : "Share"}</button>
+    <button class="btn" data-act="share">${ICONS.share}${d.noShare && CLOUD.user ? "Private" : "Share"}</button>
     <button class="btn" data-act="edit">Edit details</button>
   </div></div>
   <div class="summary">

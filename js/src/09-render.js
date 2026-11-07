@@ -4,7 +4,7 @@
 function go(view, deckId) {
   if (deckId !== S.deckId) { S.benchOpen = false; S.snap = null; S.cmp = null; S.roleFilter = null; S.roleEdit = null; S.showBracket = false; }
   S.view = view; S.deckId = deckId || null; S.filter = ""; S.confirm = null;
-  try { history.replaceState(null, "", view === "deck" ? "#deck-" + deckId : view === "share" ? "#share-" + S.shareId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
+  try { history.replaceState(null, "", view === "deck" ? deckHash(S.decks.get(deckId)) : view === "share" ? "#share-" + S.shareId : view === "all" ? "#all-cards" : view === "check" ? "#check" : location.pathname + location.search); } catch {}
   render(); window.scrollTo(0, 0);
 }
 function fromHash() { const sh = shareIdOf(location.hash); if (sh) { S.view = "share"; S.shareId = sh; return; } if (location.hash === "#all-cards") { S.view = "all"; return; } if (location.hash === "#check") { S.view = "check"; return; } const m = (location.hash || "").match(/^#deck-([A-Za-z0-9_-]+)$/); if (m) { S.view = "deck"; S.deckId = m[1]; } }
@@ -12,6 +12,9 @@ function fromHash() { const sh = shareIdOf(location.hash); if (sh) { S.view = "s
 // ---------- render ----------
 function render() {
   const app = $("#app");
+  // Your own deck's link opens it as your deck, and a deck's address follows its link (which may be made after it opened).
+  if (S.view === "share" && CLOUD.user && CLOUD.loaded) { const mine = [...S.decks.values()].find(x => x.shareId === S.shareId); if (mine) { S.view = "deck"; S.deckId = mine.id; } }
+  if (S.view === "deck" && S.decks.has(S.deckId)) { const h = deckHash(S.decks.get(S.deckId)); if (location.hash !== h) try { history.replaceState(null, "", h); } catch { /* sandboxed */ } }
   let html = `<div class="top"><div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>`;
   const lbl = (long, short) => `<span class="lbl">${long}</span><span class="lbl-s">${short}</span>`;
   const dark = themeNow() === "dark";
@@ -32,7 +35,7 @@ function render() {
   const glitch = S.ready && lastViewKey !== null && viewKey !== lastViewKey && !reduceMotion();
   lastViewKey = S.ready ? viewKey : null;
   html += `<div class="view">`;
-  if (S.view === "share" && S.shareId) html += renderShare(); // someone else's deck: doesn't wait for your own
+  if (S.view === "share" && S.shareId && !(CLOUD.user && !CLOUD.loaded)) html += renderShare(); // someone else's deck
   else if (CLOUD.user && !CLOUD.loaded) html += `<div class="empty"><h2>Loading your decks…</h2><p>Getting your library from your account.</p></div>`;
   else if (S.view === "all") html += renderAll();
   else if (S.view === "check") html += renderCheck();

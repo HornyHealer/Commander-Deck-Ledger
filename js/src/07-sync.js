@@ -245,6 +245,7 @@ function onUser(user) {
     if (!snap.metadata.fromCache) {
       CLOUD.serverDecks = true;
       if (oldFormat.size) { for (const id of oldFormat) if (S.decks.has(id)) synced.set(id, -1); oldFormat.clear(); persist(); }
+      shareCheck();
     }
     maybeMigrate(); safeRender();
   }, cloudError));
@@ -340,7 +341,8 @@ function cloudFlush() {
     const why = deckOver(d, pieces); setBlocked("d:" + d.id, why);
     if (why) continue;
     synced.set(d.id, d.rev || 0);
-    writeShare(d);
+    const shareToo = prepShare(d); // before the deck is saved: it records the link
+    if (shareToo) writeShare(d);
     if (lazy) {
       // History not read here: keep the saved pieces and put this device's new entries in the deck record.
       const info = histInfo.get(d.id);

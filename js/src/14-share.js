@@ -5,6 +5,7 @@
 // link can read it; only the deck's owner can change or remove it (firestore.rules). The id is 22 random
 // characters, so a link can't be guessed, and the database refuses to list shares, so they can't be browsed.
 // The copy is updated each time the deck is saved to the account. History, owned cards and the bin stay private.
+// Signed in, a deck's address is its share link (deckHash), and render() sends its owner to their own deck.
 const SHARE_RE = /#share-([A-Za-z0-9_-]{22})(?![A-Za-z0-9_-])/;
 const shareIdOf = s => { const m = String(s || "").match(SHARE_RE); return m ? m[1] : ""; };
 const shareUrl = id => location.origin + location.pathname + "#share-" + id;
@@ -15,7 +16,11 @@ function newShareId() {
 }
 
 // ---- the owner's side ----
-const shareSent = new Map(); // share id -> fingerprint of what was last saved there from this page
+// Signed in, every deck has a link unless its owner made it private (d.noShare), and the deck's own address
+// is that link: you open it as your deck, anyone else sees it read-only. d.shareSig fingerprints what was last
+// saved to the shared copy, so it's only rewritten when the list, name, description or combos change.
+const shareFailed = new Set(); // links whose copy couldn't be saved on this visit; tried again next visit
+let shareWarned = false;
 function shareBody(d) {
   const cb = deckCombos(d);
   return {
@@ -25,43 +30,64 @@ function shareBody(d) {
     combos: cb ? { count: cb.count, at: cb.at, two: (cb.two || []).slice(0, 100) } : undefined,
   };
 }
-function shareWrite(promise, id, what) {
+const shareSigOf = d => strHash(stableStr(shareBody(d)));
+function shareWrite(promise, what, onFail) {
   CLOUD.pending++; updateSyncChip();
   promise.catch(err => {
-    shareSent.delete(id);
-    toast(`Couldn't ${what} the shared link (${String(err && (err.code || err.message) || err).slice(0, 80)}). It will try again on the next change.`);
+    if (onFail) onFail(err);
+    if (!shareWarned) { shareWarned = true; toast(`Couldn't ${what} a deck's shared link (${String(err && (err.code || err.message) || err).slice(0, 80)}). Your decks still saved; the link will try again next visit.`); }
   }).finally(() => { CLOUD.pending = Math.max(0, CLOUD.pending - 1); updateSyncChip(); });
 }
-// Called by cloudFlush after it saves a deck. Kept apart from the deck's own save, so a problem with the
-// shared copy never stops the deck itself saving.
+// cloudFlush calls this just before it saves a deck: gives the deck a link if it should have one, and says
+// whether the shared copy needs saving too (writeShare, after the deck itself).
+function prepShare(d) {
+  if (!d.shareId && !d.noShare) d.shareId = newShareId();
+  if (!d.shareId || shareFailed.has(d.shareId)) return false;
+  const sig = shareSigOf(d); if (d.shareSig === sig) return false;
+  d.shareSig = sig; return true;
+}
+// Saved apart from the deck, so a problem with the shared copy never stops the deck itself saving.
 function writeShare(d) {
-  if (!d.shareId || !CLOUD.user || !CLOUD.api) return;
-  const body = shareBody(d), sig = strHash(stableStr(body));
-  if (shareSent.get(d.shareId) === sig) return;
-  shareSent.set(d.shareId, sig);
-  const { fsM, db } = CLOUD.api;
-  shareWrite(fsM.setDoc(fsM.doc(db, "shares", d.shareId), forCloud(Object.assign(body, { at: Date.now() }))), d.shareId, "update");
+  const id = d.shareId, { fsM, db } = CLOUD.api, ref = fsM.doc(db, "shares", id);
+  shareWrite(fsM.setDoc(ref, forCloud(Object.assign(shareBody(d), { at: Date.now() }))), "save", async err => {
+    shareFailed.add(id);
+    if (d.shareId !== id) return;
+    d.shareSig = ""; saveSoon(d); // so the next visit tries again
+    // A deck restored from someone else's backup still points at their link: give it its own.
+    if (err && err.code === "permission-denied") try {
+      const snap = await fsM.getDoc(ref);
+      if (snap.exists() && snap.data().owner !== CLOUD.user.uid && d.shareId === id) { d.shareId = newShareId(); save(d); }
+    } catch { /* the rules may not allow shares yet */ }
+  });
+}
+// Once your decks have loaded from the account: links for decks that don't have one yet, and copies that
+// didn't save last time.
+let shareChecked = false;
+function shareCheck() {
+  if (shareChecked || !CLOUD.user) return; shareChecked = true;
+  for (const d of S.decks.values()) if ((!d.shareId && !d.noShare) || (d.shareId && d.shareSig !== shareSigOf(d))) save(d);
 }
 function dropShare(id) {
-  shareSent.delete(id);
   if (!id || !CLOUD.user || !CLOUD.api) return;
   const { fsM, db } = CLOUD.api;
-  shareWrite(fsM.deleteDoc(fsM.doc(db, "shares", id)), id, "remove");
+  shareWrite(fsM.deleteDoc(fsM.doc(db, "shares", id)), "remove");
 }
-function startSharing(d) { d.shareId = newShareId(); save(d); } // the next save to the account writes the copy too
-function stopSharing(d) { const id = d.shareId; if (!id) return; delete d.shareId; save(d); dropShare(id); }
+function startSharing(d) { delete d.noShare; delete d.shareSig; d.shareId = newShareId(); save(d); }
+function stopSharing(d) { const id = d.shareId; d.noShare = true; delete d.shareId; delete d.shareSig; save(d); dropShare(id); }
+// This deck's address: its link when it has one, so the address bar is always what to send.
+const deckHash = d => d && d.shareId && CLOUD.user ? "#share-" + d.shareId : "#deck-" + (d ? d.id : S.deckId);
 
 function shareDialogHtml(dl) {
   const d = S.decks.get(dl.id); if (!d) return "";
   let body;
   if (!CLOUD.enabled) body = `<p class="muted">Sharing needs the site's account features, which aren't set up on this copy of the site.</p>`;
-  else if (!CLOUD.user) body = `<p>Sign in to share. The shared copy is kept with your account, so only you can change it.</p><div><button class="btn primary" data-act="signin">${ICONS.user}Sign in</button></div>`;
+  else if (!CLOUD.user) body = `<p>Sign in to share. Signed in, every deck gets a link that only you can change.</p><div><button class="btn primary" data-act="signin">${ICONS.user}Sign in</button></div>`;
   else if (d.shareId) {
     body = `<div class="f"><label class="label" for="sh-link">Link to this deck</label><div class="linkrow"><input class="field mono" id="sh-link" readonly value="${esc(shareUrl(d.shareId))}"><button class="btn sm primary" data-dlg="sh-copy">${ICONS.copy}Copy link</button></div></div>
-      <p class="muted sh-note">Changes you make to the deck show up at this link a moment after they're saved.</p>
-      ${dl.stop ? `<div class="delbox"><span>Stop sharing ${esc(d.name)}? The link stops working for everyone who has it. Sharing again makes a new link.</span><span class="confirm"><button class="btn sm danger" data-dlg="sh-stop-yes">Stop sharing</button><button class="btn sm ghost" data-dlg="sh-stop-no">Keep sharing</button></span></div>`
-        : `<div><button class="btn sm ghost" data-dlg="sh-stop">Stop sharing</button></div>`}`;
-  } else body = `<p>Not shared yet. Making a link puts a read-only copy of this deck where anyone with the link can see it.</p><div><button class="btn primary" data-dlg="sh-make">${ICONS.share}Make a link</button></div>`;
+      <p class="muted sh-note">It's the address of this page, so you can copy it from the address bar too. Opening it shows you your deck as usual. Changes show up for everyone a moment after they're saved.</p>
+      ${dl.stop ? `<div class="delbox"><span>Make ${esc(d.name)} private? The link stops working for everyone who has it. Sharing again later makes a new link.</span><span class="confirm"><button class="btn sm danger" data-dlg="sh-stop-yes">Make private</button><button class="btn sm ghost" data-dlg="sh-stop-no">Keep sharing</button></span></div>`
+        : `<div><button class="btn sm ghost" data-dlg="sh-stop">Make private</button></div>`}`;
+  } else body = `<p>This deck is private: nobody else can see it.</p><div><button class="btn primary" data-dlg="sh-make">${ICONS.share}Share it again</button></div>`;
   return `<div class="dialog sh-dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Share ${esc(d.name)}</h2><p class="muted" style="margin:4px 0 0;font-size:13px">People with the link see the list, stats and combos, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin stay private.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">${body}</div>
     <footer><button class="btn" data-dlg="close">Done</button></footer></div>`;
@@ -69,11 +95,11 @@ function shareDialogHtml(dl) {
 // Buttons in the share popup (data-dlg="sh-…").
 function shareDlg(dlg) {
   const dl = S.dialog, d = dl && S.decks.get(dl.id); if (!d) return;
-  if (dlg === "sh-make") { if (!CLOUD.user) return; startSharing(d); renderDialog(); return toast("Link made. Copy it and send it to anyone you want to see this deck."); }
+  if (dlg === "sh-make") { if (!CLOUD.user) return; startSharing(d); render(); renderDialog(); return toast("Shared again, with a new link."); }
   if (dlg === "sh-copy" && d.shareId) return copyText(shareUrl(d.shareId), "Link");
   if (dlg === "sh-stop") { dl.stop = true; return renderDialog(); }
   if (dlg === "sh-stop-no") { dl.stop = false; return renderDialog(); }
-  if (dlg === "sh-stop-yes") { dl.stop = false; stopSharing(d); render(); renderDialog(); return toast("Stopped sharing. The old link no longer works."); }
+  if (dlg === "sh-stop-yes") { dl.stop = false; stopSharing(d); render(); renderDialog(); return toast("This deck is private now. Its old link no longer works."); }
 }
 
 // ---- reading a shared deck (works signed out) ----
@@ -122,7 +148,6 @@ function renderShare() {
   if (SHARE.state === "off") return stop("Shared decks aren't set up here", "This copy of the site doesn't have the account features that shared decks use.");
   if (SHARE.state !== "ok") return stop("Couldn't open this shared deck", "Check your connection and try again.", true);
   const sd = SHARE.data, t = total(sd), cmd = sd.commanders.length ? sd.commanders.join(" & ") : sd.name;
-  const mine = CLOUD.user && CLOUD.user.uid === sd.owner && [...S.decks.values()].find(x => x.shareId === S.shareId);
   const tab = ["list", "stats", "combos"].includes(S.shareTab) ? S.shareTab : "list";
   const tb = (id, label, n) => `<button class="tab${tab === id ? " on" : ""}" role="tab" aria-selected="${tab === id}" data-sharetab="${id}">${label}${n === "" ? "" : `<span class="n">${n}</span>`}</button>`;
   let h = `${back}<div class="dhead"><div>
@@ -132,9 +157,8 @@ function renderShare() {
     ${sd.desc ? `<p class="ddesc">${esc(sd.desc)}</p>` : ""}
   </div><div class="actions">
     <button class="btn" data-act="share-copy">${ICONS.copy}Copy deck list</button>
-    ${mine ? `<button class="btn primary" data-open="${esc(mine.id)}">Open your deck</button>` : `<button class="btn primary" data-act="share-add">${ICONS.plus}Add to my decks</button>`}
+    <button class="btn primary" data-act="share-add">${ICONS.plus}Add to my decks</button>
   </div></div>
-  ${mine ? `<p class="muted sh-mine">This is the link to one of your decks. It shows what other people see.</p>` : ""}
   <div class="tabs" role="tablist">${tb("list", "Deck list", t)}${tb("stats", "Stats", "")}${tb("combos", "Combos", sd.combos ? sd.combos.count : "")}</div>
   <div class="tabpanel" role="tabpanel">`;
   if (tab === "stats") h += renderStats(sd);
