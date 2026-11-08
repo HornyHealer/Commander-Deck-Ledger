@@ -49,7 +49,6 @@ test('the first sign-in moves browser decks into the account', async ({ page }) 
   const store = await fakeStore(page);
   expect(binCards(store).some(c => c.n === 'Arcane Signet')).toBe(true);
   expect(await page.evaluate(() => localStorage.getItem('cdl-data-v1'))).toBeNull();
-  await expect(page.locator('.site-foot')).toContainText('saved to your account');
 });
 
 test('changes sync to the account and are there after a reload', async ({ page }) => {

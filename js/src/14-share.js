@@ -77,22 +77,17 @@ function stopSharing(d) { const id = d.shareId; d.noShare = true; delete d.share
 // This deck's address: its link when it has one, so the address bar is always what to send.
 const deckHash = d => d && d.shareId && CLOUD.user ? "#share-" + d.shareId : "#deck-" + (d ? d.id : S.deckId);
 
-function shareDialogHtml(dl) {
-  const d = S.decks.get(dl.id); if (!d) return "";
-  let body;
-  if (!CLOUD.enabled) body = `<p class="muted">Sharing needs the site's account features, which aren't set up on this copy of the site.</p>`;
-  else if (!CLOUD.user) body = `<p>Sign in to share. Signed in, every deck gets a link that only you can change.</p><div><button class="btn primary" data-act="signin">${ICONS.user}Sign in</button></div>`;
-  else if (d.shareId) {
-    body = `<div class="f"><label class="label" for="sh-link">Link to this deck</label><div class="linkrow"><input class="field mono" id="sh-link" readonly value="${esc(shareUrl(d.shareId))}"><button class="btn sm primary" data-dlg="sh-copy">${ICONS.copy}Copy link</button></div></div>
-      <p class="muted sh-note">It's the address of this page, so you can copy it from the address bar too. Opening it shows you your deck as usual. Changes show up for everyone a moment after they're saved.</p>
-      ${dl.stop ? `<div class="delbox"><span>Make ${esc(d.name)} private? The link stops working for everyone who has it. Sharing again later makes a new link.</span><span class="confirm"><button class="btn sm danger" data-dlg="sh-stop-yes">Make private</button><button class="btn sm ghost" data-dlg="sh-stop-no">Keep sharing</button></span></div>`
-        : `<div><button class="btn sm ghost" data-dlg="sh-stop">Make private</button></div>`}`;
-  } else body = `<p>This deck is private: nobody else can see it.</p><div><button class="btn primary" data-dlg="sh-make">${ICONS.share}Share it again</button></div>`;
-  return `<div class="dialog sh-dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Share ${esc(d.name)}</h2><p class="muted" style="margin:4px 0 0;font-size:13px">People with the link see the list, stats and combos, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin stay private.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
-    <div class="db">${body}</div>
-    <footer><button class="btn" data-dlg="close">Done</button></footer></div>`;
+// The Sharing part of the Edit details popup.
+function shareFieldHtml(d, dl) {
+  if (!CLOUD.enabled) return `<p class="muted sh-note">Sharing needs the site's account features, which aren't set up on this copy of the site.</p>`;
+  if (!CLOUD.user) return `<p class="muted sh-note">Sign in and this deck gets a link you can send. Only you can change it.</p>`;
+  if (!d.shareId) return `<p class="sh-note">Private: nobody else can see this deck.</p><div><button class="btn sm" data-dlg="sh-make">${ICONS.share}Share it again</button></div>`;
+  return `<div class="linkrow"><input class="field mono" id="sh-link" readonly aria-label="Link to this deck" value="${esc(shareUrl(d.shareId))}"><button class="btn sm primary" data-dlg="sh-copy">${ICONS.copy}Copy link</button></div>
+    <p class="muted sh-note">Anyone with the link can see the list, stats and combos. History, owned cards and the card bin stay private.</p>
+    ${dl.stop ? `<div class="delbox"><span>Make ${esc(d.name)} private? The link stops working for everyone who has it. Sharing again later makes a new link.</span><span class="confirm"><button class="btn sm danger" data-dlg="sh-stop-yes">Make private</button><button class="btn sm ghost" data-dlg="sh-stop-no">Keep sharing</button></span></div>`
+      : `<div><button class="btn sm ghost" data-dlg="sh-stop">Make private</button></div>`}`;
 }
-// Buttons in the share popup (data-dlg="sh-…").
+// Buttons in the Sharing part of Edit details (data-dlg="sh-…").
 function shareDlg(dlg) {
   const dl = S.dialog, d = dl && S.decks.get(dl.id); if (!d) return;
   if (dlg === "sh-make") { if (!CLOUD.user) return; startSharing(d); render(); renderDialog(); return toast("Shared again, with a new link."); }
@@ -159,12 +154,12 @@ function renderShare() {
     <button class="btn" data-act="share-copy">${ICONS.copy}Copy deck list</button>
     <button class="btn primary" data-act="share-add">${ICONS.plus}Add to my decks</button>
   </div></div>
-  <div class="tabs" role="tablist">${tb("list", "Deck list", t)}${tb("stats", "Stats", "")}${tb("combos", "Combos", sd.combos ? sd.combos.count : "")}</div>
+  <div class="sheet"><div class="tabs" role="tablist">${tb("list", "Deck list", t)}${tb("stats", "Stats", "")}${tb("combos", "Combos", sd.combos ? sd.combos.count : "")}</div>
   <div class="tabpanel" role="tabpanel">`;
   if (tab === "stats") h += renderStats(sd);
   else if (tab === "combos") h += shareCombos(sd);
   else h += shareList(sd);
-  return h + `</div>`;
+  return h + `</div></div>`;
 }
 function shareList(sd) {
   const groups = new Map(), cmds = sd.commanders;

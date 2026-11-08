@@ -35,8 +35,9 @@ function renderDialog() {
         return `<div class="artrow">${art ? `<img class="artprev" src="${esc(artSrcOf(d))}" alt="Art from ${esc(art)}" style="object-position:center ${d.artPos || "center"}">` : `<div class="artprev empty-art">No art</div>`}<div class="artbtns">
           <label class="checkline">Art from <select class="field" id="e-artcard">${cmds.map(n => opt(n, n, sel === n)).join("")}${others.length ? `<optgroup label="Other cards in this deck">${others.map(n => opt(n, n, sel === n)).join("")}</optgroup>` : ""}${opt("__none", "No art", sel === "__none")}</select></label>
           ${art ? `<label class="checkline">Show <select class="field" id="e-artpos">${["top", "center", "bottom"].map(v => `<option value="${v}" ${(d.artPos || "center") === v ? "selected" : ""}>${v === "center" ? "middle" : v}</option>`).join("")}</select> of the image</label>` : ""}
-        </div></div>${art ? printingsHtml(d, art) : ""}<p class="arthint">Art comes from Scryfall and appears faded behind this deck's panel on the main page.</p>`;
+        </div></div>${art ? printingsHtml(d, art) : ""}`;
       })()}</div>
+      <div class="f sh-field"><span class="label">Sharing</span>${shareFieldHtml(d, dl)}</div>
       <div class="f"><span class="label">Delete</span><div style="margin-top:5px">${dl.del ? `<div class="delbox"><span>Delete ${esc(d.name)} and all of its history?</span>${printedTotal(d) ? `<label class="checkline"><input type="checkbox" id="del-keep" ${dl.keep === false ? "" : "checked"}> Keep its ${printedTotal(d)} owned card${printedTotal(d) > 1 ? "s" : ""} in the card bin</label>` : ""}<span class="confirm"><button class="btn sm danger" data-dlg="del-yes">Delete deck</button><button class="btn sm ghost" data-dlg="del-no">Keep it</button></span></div>` : `<button class="btn sm danger" data-dlg="del">Delete this deck</button>`}</div></div>
     </div>
     <footer><button class="btn ghost" data-dlg="close">Cancel</button><button class="btn primary" data-dlg="save-edit">Save</button></footer></div>`;
@@ -47,12 +48,10 @@ function renderDialog() {
       <details class="u-paste"${dl.paste ? " open" : ""}><summary>Or paste a list instead</summary><textarea class="field" id="u-list" placeholder="Paste the full current list">${esc(dl.text || "")}</textarea></details>
       <div id="u-diff"></div></div>
     <footer><button class="btn ghost" data-dlg="close">Cancel</button>${saveLink ? `<button class="btn" data-dlg="to-bench-save" id="u-go-save" disabled>Save link &amp; put changes on the bench</button>` : ""}<button class="btn primary" data-dlg="to-bench" id="u-go" disabled>Put changes on the bench</button></footer></div>`;
-  } else if (dl.kind === "share") {
-    h = shareDialogHtml(dl);
   } else if (dl.kind === "combos") {
     h = combosDialogHtml(dl);
   } else if (dl.kind === "binadd") {
-    h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Add to card bin</h2><p class="muted" style="margin:6px 0 0;font-size:13px">For cards you already own that aren't in a deck. Search for a card, or paste a list with one card per line like <span class="mono">2x Sol Ring</span>.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
+    h = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Add to card bin</h2></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">
       <div class="search"><input class="field" id="ba-search" placeholder="Search all cards…" autocomplete="off" aria-label="Search all cards"><div class="sugg" id="g-ba" hidden></div></div>
       <textarea class="field" id="ba-list" placeholder="1x Sol Ring&#10;1x Arcane Signet&#10;4x Swamp" style="min-height:200px">${esc(dl.text || "")}</textarea>

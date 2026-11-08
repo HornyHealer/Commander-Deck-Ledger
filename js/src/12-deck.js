@@ -24,8 +24,7 @@ function bracketOf(cards, combos) {
 }
 function renderBracket(b) {
   if (!S.showBracket) return "";
-  return `<div class="checks bracket-why" id="deck-bracket"><p class="bracket-head"><b>Bracket ${esc(b.label)}</b> · ${esc(b.name)}</p><ul>${b.reasons.map(x => `<li><span class="flag ${x.cards ? "warn" : "good"}">${esc(x.kind)}</span><span>${esc(x.text)}${x.cards ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul>
-    <p class="muted bracket-note">This is the lowest bracket the cards allow. ${b.combosChecked ? "Two-card combos are counted from the deck's last combo check." : `Two-card combos aren't counted yet: press <b>Combos</b> to check this deck.`} How fast the deck wins can push it higher, so settle the final number with your table.${hasTextFlags() ? "" : " Mass land denial and extra turns will be checked once the card list finishes updating."}</p></div>`;
+  return `<div class="checks bracket-why" id="deck-bracket"><p class="bracket-head"><b>Bracket ${esc(b.label)}</b> · ${esc(b.name)}</p><ul>${b.reasons.map(x => `<li><span class="flag ${x.cards ? "warn" : "good"}">${esc(x.kind)}</span><span>${esc(x.text)}${x.cards ? `<small>${x.cards.map(esc).join(", ")}</small>` : ""}</span></li>`).join("")}</ul></div>`;
 }
 
 const ROLES = [["ramp", "Ramp", F.RAMP], ["draw", "Draw", F.DRAW], ["removal", "Removal", F.REMOVAL], ["wipe", "Wipes", F.WIPE], ["tutor", "Tutors", F.TUTOR], ["wincon", "Win cons", 0], ["protect", "Protection", 0]];
@@ -43,7 +42,7 @@ function setRoles(d, n, list) {
 }
 function rolesBar(d) {
   const counts = roleCounts(d, d.cur);
-  return `<div class="roles-bar"><span class="label">Roles</span><div class="chips">${ROLES.map(([id, label]) => `<button class="chip${S.roleFilter === id ? " on" : ""}" data-rolefilter="${id}" aria-pressed="${S.roleFilter === id}">${label}<b class="mono">${counts[id]}</b></button>`).join("")}</div><span class="muted rhint">Suggested from each card's text. Use the tag button on a card to change its roles. Tap a role to show only those cards.</span></div>`;
+  return `<div class="roles-bar"><span class="label">Roles</span><div class="chips">${ROLES.map(([id, label]) => `<button class="chip${S.roleFilter === id ? " on" : ""}" data-rolefilter="${id}" aria-pressed="${S.roleFilter === id}">${label}<b class="mono">${counts[id]}</b></button>`).join("")}</div></div>`;
 }
 
 function changeTitle(e) {
@@ -100,7 +99,7 @@ function renderSnapshot(d) {
     <div class="k"><span class="label">Avg. mana value</span><span class="v">${st.avg.toFixed(2)}</span></div>
     <div class="k"><span class="label">Bracket</span><span class="v">${esc(st.bracket.label)}</span></div>
     <div class="k"><span class="label">Roles</span><span class="role-mini">${ROLES.map(([id, l]) => `<span>${l} <b class="mono">${st.roles[id]}</b></span>`).join("")}</span></div>
-  </div><div class="groups">`;
+  </div><div class="sheet"><div class="groups">`;
   for (const g of ["CMD", ...TYPE_ORDER]) {
     const arr = groups.get(g); if (!arr) continue; arr.sort(cardSorter(S.sort));
     h += `<div class="group"><h3>${g === "CMD" ? "Commander" : TYPE_NAME[g]}<span class="mono">${qsum(arr)}</span></h3>`;
@@ -111,7 +110,7 @@ function renderSnapshot(d) {
     }
     h += `</div>`;
   }
-  return h + `</div>`;
+  return h + `</div></div>`;
 }
 function renderCompare(d) {
   const pts = versionPoints(d); const c = S.cmp;
@@ -145,11 +144,10 @@ function renderDeck(d) {
     <h2>${esc(cmd)}</h2>
     <div class="dn">${esc(d.name)} · started ${fmtDate(d.createdAt)}${d.link ? ` · <a href="${esc(d.link)}" target="_blank" rel="noopener">${linkName(d.link)} ${ICONS.ext}</a>` : ""}</div>
     ${d.desc ? `<p class="ddesc">${esc(d.desc)}</p>` : ""}
-  </div><div class="actions">
-    <button class="btn" data-act="update">${ICONS.down}Update from Archidekt</button>
-    <button class="btn" data-act="combos">${ICONS.combo}Combos${deckCombos(d) ? `<span class="mono cb-count">${deckCombos(d).count}</span>` : ""}</button>
-    <button class="btn" data-act="share">${ICONS.share}${d.noShare && CLOUD.user ? "Private" : "Share"}</button>
-    <button class="btn" data-act="edit">Edit details</button>
+  </div><div class="actions iacts">
+    <button class="btn ibtn" data-act="update">${ICONS.down}<span class="ib-t">Update from Archidekt</span></button>
+    <button class="btn ibtn" data-act="combos">${ICONS.combo}<span class="ib-t">Combos</span>${deckCombos(d) ? `<span class="mono cb-count">${deckCombos(d).count}</span>` : ""}</button>
+    <button class="btn ibtn" data-act="edit">${ICONS.edit}<span class="ib-t">Edit details</span></button>
   </div></div>
   <div class="summary">
     <div class="k"><span class="label">Cards</span><span class="v ${t === 100 ? "ok" : t + net === 100 ? "" : "warn"}">${t}<span class="muted" style="font-size:13px">/100</span></span>${net ? `<span class="label inc-note">${net > 0 ? "+" : "−"}${Math.abs(net)} incoming</span>` : ""}</div>
@@ -161,15 +159,15 @@ function renderDeck(d) {
     <div class="k"><span class="label">Rules</span><span class="checkcell">${issues.length ? `<button class="flag bad flagbtn" data-act="toggle-checks" aria-expanded="${!!S.showChecks}" aria-controls="deck-checks">${issues.length} issue${issues.length === 1 ? "" : "s"} ${S.showChecks ? "▴" : "▾"}</button>` : `<span class="flag good" style="margin:0">Legal</span>`}${unknown ? `<span class="flag warn" style="margin:0">${unknown} unrecognized</span>` : ""}</span></div>
     <div class="k"><span class="label">Bracket</span><button class="v bracket-btn" data-act="toggle-bracket" aria-expanded="${!!S.showBracket}" aria-controls="deck-bracket" title="Why this bracket?">${esc(br.label)}<span class="bname">${esc(br.name)} ${S.showBracket ? "▴" : "▾"}</span></button></div>
   </div>${renderChecks(d, issues)}${renderBracket(br)}
-  <div class="layout"><div style="min-width:0">
+  <div class="layout"><div class="sheet" style="min-width:0">
     <div class="tabs" role="tablist">
       ${tabBtn("current", "Current list", t)}
-      ${tabBtn("removed", "Removed", removed.reduce((a, r) => a + r.q, 0), true)}
-      ${tabBtn("printed", "Owned", printedTotal(d))}
-      ${tabBtn("history", "History", histCount)}
+      ${tabBtn("history", "History", "", HIST_TABS.includes(S.tab))}
       ${tabBtn("stats", "Stats", "")}
     </div>`;
   h += `<div class="tabpanel" role="tabpanel">`;
+  // History holds the changes, the cards cut from the deck and the cards owned for it.
+  if (HIST_TABS.includes(S.tab)) h += `<div class="subtabs" role="tablist" aria-label="History">${subBtn("history", "Changes", histCount)}${subBtn("removed", "Removed", removed.reduce((a, r) => a + r.q, 0))}${subBtn("printed", "Owned", printedTotal(d))}</div>`;
   if (S.tab === "current") h += renderCurrent(d);
   else if (S.tab === "removed") h += renderRemoved(d, removed);
   else if (S.tab === "printed") h += renderPrinted(d);
@@ -178,8 +176,13 @@ function renderDeck(d) {
   h += `</div></div>${renderBench(d)}</div>`;
   return h;
 }
-function tabBtn(id, label, n, drop) {
-  return `<button class="tab${S.tab === id ? " on" : ""}" role="tab" aria-selected="${S.tab === id}" data-tab="${id}"${drop ? ' data-drop="out"' : ""}>${label}${n === "" ? "" : `<span class="n">${n}</span>`}</button>`;
+const HIST_TABS = ["history", "removed", "printed"];
+function tabBtn(id, label, n, on) {
+  on = on || S.tab === id;
+  return `<button class="tab${on ? " on" : ""}" role="tab" aria-selected="${on}" data-tab="${id}">${label}${n === "" ? "" : `<span class="n">${n}</span>`}</button>`;
+}
+function subBtn(id, label, n) {
+  return `<button class="subtab${S.tab === id ? " on" : ""}" role="tab" aria-selected="${S.tab === id}" data-tab="${id}">${label}<span class="n">${n}</span></button>`;
 }
 
 function colorRank(n) { const ci = ciOf(n); if (!ci) return 99; if (ci.length === 1) return MANA_ORDER.indexOf(ci); return 10 + ci.length * 10 + MANA_ORDER.indexOf(ci[0]); }
@@ -198,7 +201,7 @@ function renderCurrent(d) {
     const g = cmds.includes(c.n) ? "CMD" : typeOf(c.n);
     if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c);
   }
-  let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"} title="Cards you still need to get for incoming changes">Incoming only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div><span class="muted" style="font-size:12px;flex-basis:100%">${canHover ? "Drag a card onto <b>Removed</b> or the bench, or use the scissors." : "Tap the scissors to cut a card. The swap bench is at the bottom of the screen."}</span></div>`;
+  let h = `<div class="toolbar"><input class="field" id="f-cur" type="search" placeholder="Find a card in this deck" value="${esc(S.filter)}" aria-label="Find a card in this deck"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-cur">Whole list<span class="mono muted">${total(d)}</span></button><button role="menuitem" data-act="copy-toprint" ${todo.length ? "" : "disabled"} title="Cards you still need to get for incoming changes">Incoming only<span class="mono muted">${qsum(todo)}</span></button></div>` : ""}</div></div>`;
   h += renderIncoming(d) + rolesBar(d);
   if (!groups.size) return h + `<p class="muted">${S.roleFilter ? `No cards${S.filter ? ` matching “${esc(S.filter)}”` : ""} have the ${esc(ROLE_NAME[S.roleFilter])} role.` : `No cards match “${esc(S.filter)}”.`}</p>`;
   h += `<div class="groups">`;
@@ -217,7 +220,7 @@ function renderCurrent(d) {
       const redit = editing ? `<span class="roleedit" role="group" aria-label="Roles for ${esc(c.n)}">${ROLES.map(([id, l]) => `<button class="chip sm${roles.includes(id) ? " on" : ""}" aria-pressed="${roles.includes(id)}" data-roletoggle="${esc(JSON.stringify([c.n, id]))}">${ROLE_NAME[id]}</button>`).join("")}${d.roles && d.roles[roleKey(c)] ? `<button class="btn sm ghost" data-rolereset="${esc(c.n)}">Use suggested</button>` : ""}<button class="btn sm" data-act="role-done">Done</button></span>` : "";
       h += `<div class="row${st ? " staged-out" : ""}${editing ? " editing" : ""}" ${canHover ? 'draggable="true" ' : ""}data-drag="cur" data-name="${esc(c.n)}">
         <span class="q">${c.q}</span><span class="nm"><span>${cardLink(c.n)}</span>${flags}${rtags}${redit}</span>${r ? pipsFor(r[1]) : "<span></span>"}
-        <span class="acts"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button><button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button></span></div>`;
+        <span class="acts hov"><button class="iconbtn${editing ? " on" : ""}" title="Roles" aria-label="Set roles for ${esc(c.n)}" aria-expanded="${editing}" data-roleedit="${esc(c.n)}">${ICONS.tag}</button><button class="iconbtn" title="Cut ${esc(c.n)}" aria-label="Cut ${esc(c.n)}" data-cut="${esc(c.n)}">${ICONS.cut}</button></span></div>`;
     }
     h += `</div>`;
   }
@@ -304,13 +307,13 @@ function renderBench(d) {
   const pair = b.out.length && b.in.length ? (b.out.length === b.in.length ? `Saves as ${b.out.length} swap${b.out.length > 1 ? "s" : ""}, matched in order.` : `${b.out.length} out, ${b.in.length} in.`) : b.out.length ? "Cuts only. Add replacements below if you have them." : b.in.length ? "Adds only." : "";
   const nOut = b.out.reduce((a, x) => a + x.q, 0), nIn = b.in.reduce((a, x) => a + x.q, 0);
   const bar = `<button class="sheet-bar" data-act="bench-toggle" aria-expanded="${!!S.benchOpen}" aria-controls="bench-body"><span class="sb-t">Swap bench</span><span class="sb-n">${nOut || nIn ? `<b class="out">${nOut} out</b><b class="in">${nIn} in</b>` : "Cut or add cards"}</span><span class="sb-c">${S.benchOpen ? "Close ▾" : "Open ▴"}</span></button>`;
-  return `<aside class="bench${S.benchOpen ? " open" : ""}" aria-label="Swap bench">${bar}<header><h3>Swap bench</h3><p>Stage cuts and adds, then save them as one change.</p></header>
+  return `<aside class="bench${S.benchOpen ? " open" : ""}" aria-label="Swap bench">${bar}<header><h3>Swap bench</h3></header>
     <div class="zone"><div class="zt"><span class="label out">Taking out</span><span class="mono muted" style="font-size:12px">${b.out.reduce((a, x) => a + x.q, 0)}</span></div>
-      <div class="dropbox" data-drop="out">${b.out.length ? b.out.map(x => row(x, "out")).join("") : (canHover ? '<div class="hint">Drag cards here from the current list</div>' : '<div class="hint">Tap the scissors on a card, or search below</div>')}</div>
+      <div class="dropbox" data-drop="out">${b.out.length ? b.out.map(x => row(x, "out")).join("") : (canHover ? '<div class="hint">Drag here</div>' : '<div class="hint">Tap a card, then its scissors</div>')}</div>
       <div class="search"><input class="field" id="s-out" placeholder="Search this deck to cut…" autocomplete="off" aria-label="Search this deck to cut"><div class="sugg" id="g-out" hidden></div></div>
     </div>
     <div class="zone"><div class="zt"><span class="label in">Putting in</span><span class="mono muted" style="font-size:12px">${b.in.reduce((a, x) => a + x.q, 0)}</span></div>
-      <div class="dropbox" data-drop="in">${b.in.length ? b.in.map(x => row(x, "in")).join("") : (canHover ? '<div class="hint">Drag removed cards here, or search any card</div>' : '<div class="hint">Bring back a removed card, or search any card</div>')}</div>
+      <div class="dropbox" data-drop="in">${b.in.length ? b.in.map(x => row(x, "in")).join("") : (canHover ? '<div class="hint">Drag here</div>' : '<div class="hint">Bring back a removed card, or search any card</div>')}</div>
       <div class="search"><input class="field" id="s-in" placeholder="Search all cards to add…" autocomplete="off" aria-label="Search all cards to add"><div class="sugg" id="g-in" hidden></div></div>
     </div>
     <div class="foot">

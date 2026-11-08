@@ -425,10 +425,8 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .bracket-btn:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--acid); }
 .checks.bracket-why { outline-color: var(--rule); }
 .bracket-head { margin: 6px 0 2px; font-family: var(--wide); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-.bracket-note { margin: 8px 0 6px; font-size: 12px; }
 .roles-bar { display: flex; gap: 8px 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .roles-bar .chip b { margin-left: 6px; font-weight: 600; }
-.roles-bar .rhint { font-size: 12px; flex-basis: 100%; }
 .rtags { display: inline-flex; gap: 3px; margin-left: 6px; flex-wrap: wrap; vertical-align: 1px; }
 .rtag { font: 400 9px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); padding: 1px 4px; }
 .roleedit { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
@@ -849,3 +847,33 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .st-curve { gap: 5px; height: 150px; }
   .hand { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 }
+
+/* ---------- panels, icon buttons, history subtabs ---------- */
+/* An opaque box behind lists and their search, so the moving backdrop never sits behind text. */
+.sheet { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px 16px; }
+.lib-sheet { background: var(--sunk); }
+.lib-sheet:not(:has(.libbar, .lib-none)) { padding-top: 16px; }
+.bin.sheet { padding-top: 12px; }
+@media (max-width: 640px) { .sheet { padding: 12px 10px 14px; } }
+
+/* A deck's Update, Combos and Edit buttons: icons whose words slide out on hover or keyboard focus,
+   pushing the buttons beside them along. */
+.iacts { flex-wrap: nowrap; }
+.ibtn { gap: 0; padding: 8px 11px; }
+.ibtn .ib-t { display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: max-width .25s ease, opacity .2s ease, margin-left .25s ease; }
+.ibtn:hover .ib-t, .ibtn:focus-visible .ib-t { max-width: 24ch; opacity: 1; margin-left: 8px; }
+
+/* Cut and role buttons on a card row: shown on hover or keyboard focus (or a tap on touch screens),
+   pushing the mana cost along. */
+.row .acts.hov { max-width: 0; overflow: hidden; opacity: 0; transition: max-width .2s ease, opacity .15s ease; }
+.row:hover .acts.hov, .row:focus-within .acts.hov, .row.editing .acts.hov, .row.open .acts.hov { max-width: 80px; opacity: 1; }
+.row.open { background: var(--sunk); }
+
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 14px; }
+.subtab { background: none; border: 1px solid var(--line); padding: 6px 10px; font-family: var(--wide); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.subtab:hover { color: var(--ink); border-color: var(--ink); }
+.subtab.on { color: var(--acid-ink); background: var(--acid); border-color: var(--acid); }
+.subtab .n { font: 500 10px var(--mono); }
+.sh-field .linkrow { margin-top: 5px; }
+.sh-field .sh-note { margin: 6px 0; }
+@media (prefers-reduced-motion: reduce) { .ibtn .ib-t, .row .acts.hov { transition: none; } }

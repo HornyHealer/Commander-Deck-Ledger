@@ -54,9 +54,9 @@ test('signed in, every deck gets a link: its own address, which follows changes'
   expect(doc.owner).toBe('u-test');
   expect(Object.keys(doc).sort()).toEqual(['at', 'commanders', 'cur', 'desc', 'name', 'owner', 'v']);
   expect(doc.cur.every(c => Object.keys(c).join() === 'n,q')).toBe(true);
-  await page.click('[data-act="share"]');
+  await page.click('[data-act="edit"]'); // sharing lives in Edit details
   await expect(page.locator('#sh-link')).toHaveValue(new RegExp('#share-' + id + '$'));
-  await page.click('.sh-dialog [data-dlg="close"]');
+  await page.click('[data-dlg="close"] >> nth=0');
 
   // A change to the deck reaches the shared copy; a change only to owned cards doesn't rewrite it.
   await page.click('[data-act="edit"]');
@@ -77,19 +77,19 @@ test('making a deck private removes its link; sharing again makes a new one', as
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
   await expect(page).toHaveURL(/#share-/);
   const id = page.url().split('#share-')[1];
-  await page.click('[data-act="share"]');
+  await page.click('[data-act="edit"]');
   await page.click('[data-dlg="sh-stop"]');
   await page.click('[data-dlg="sh-stop-yes"]');
-  await expect(page.locator('.sh-dialog')).toContainText('This deck is private');
+  await expect(page.locator('.sh-field')).toContainText('Private: nobody else can see this deck');
   await expect.poll(async () => (await fakeStore(page))['shares/' + id]).toBeUndefined();
   await expect(page).toHaveURL(/#deck-/);
-  await page.click('.sh-dialog [data-dlg="close"]');
-  await expect(page.locator('[data-act="share"]')).toHaveText(/Private/);
+  await page.click('[data-dlg="close"] >> nth=0');
   // It stays private after a reload (no new link is made by itself).
   await expect.poll(async () => (await fakeStore(page))['users/u-test/decks/fixture-rats']?.noShare).toBe(true);
   await page.reload();
-  await expect(page.locator('[data-act="share"]')).toHaveText(/Private/);
-  await page.click('[data-act="share"]');
+  await expect(page).toHaveURL(/#deck-/);
+  await page.click('[data-act="edit"]');
+  await expect(page.locator('.sh-field')).toContainText('Private');
   await page.click('[data-dlg="sh-make"]');
   await expect(page.locator('#sh-link')).toHaveValue(/#share-[A-Za-z0-9_-]{22}$/);
   const id2 = (await page.locator('#sh-link').inputValue()).split('#share-')[1];
@@ -125,12 +125,13 @@ test('a deck restored from someone else\'s backup gets its own link', async ({ p
   expect((await fakeStore(page))['shares/' + SID].owner).toBe('u-friend'); // theirs is untouched
 });
 
-test('signed out, the share popup asks you to sign in first', async ({ page }) => {
+test('signed out, Edit details says to sign in to share', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Try an example deck' }).click();
-  await page.click('[data-act="share"]');
-  await expect(page.locator('.sh-dialog')).toContainText('Sign in to share');
-  await expect(page.locator('[data-dlg="sh-make"]')).toHaveCount(0);
+  await expect(page).toHaveURL(/#deck-/);
+  await page.click('[data-act="edit"]');
+  await expect(page.locator('.sh-field')).toContainText('Sign in');
+  await expect(page.locator('[data-dlg="sh-make"], #sh-link')).toHaveCount(0);
 });
 
 test.describe('with clipboard', () => {

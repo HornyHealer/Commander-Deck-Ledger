@@ -31,7 +31,6 @@ test('estimates each deck\'s bracket and explains why @phone', async ({ page }) 
   await expect(why).toContainText('4 Game Changers');
   await expect(why).toContainText('Cyclonic Rift');
   await expect(why).toContainText('Extra turns');
-  await expect(why).toContainText('lowest bracket the cards allow');
 });
 
 test('a short description can be added when creating a deck and edited later', async ({ page }) => {
@@ -61,6 +60,7 @@ test('role counts come from card text, filter the list and can be changed per ca
   expect((await rowNames(page)).sort()).toEqual(['Arcane Signet', 'Sol Ring']);
   await chip('ramp').click();
   // Mark Thassa's Oracle as a win condition; it survives a reload.
+  await page.locator('.row', { has: page.locator(`[data-roleedit="Thassa's Oracle"]`) }).first().hover(); // its buttons show on hover
   await page.click(`[data-roleedit="Thassa's Oracle"]`);
   await page.getByRole('group', { name: "Roles for Thassa's Oracle" }).getByRole('button', { name: 'Win con' }).click();
   await expect(chip('wincon')).toContainText('1');
@@ -68,6 +68,7 @@ test('role counts come from card text, filter the list and can be changed per ca
   await expect(page.locator('.row', { hasText: "Thassa's Oracle" }).locator('.rtag')).toHaveText('Win con');
   await page.reload();
   await expect(page.locator('[data-rolefilter="wincon"]')).toContainText('1');
+  await page.locator('.row', { has: page.locator(`[data-roleedit="Thassa's Oracle"]`) }).first().hover(); // its buttons show on hover
   await page.click(`[data-roleedit="Thassa's Oracle"]`);
   await page.click(`[data-rolereset="Thassa's Oracle"]`);
   await expect(page.locator('[data-rolefilter="wincon"]')).toContainText('0');

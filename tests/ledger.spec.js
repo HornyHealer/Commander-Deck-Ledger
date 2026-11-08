@@ -62,6 +62,7 @@ test('importing a backup keeps the decks after a reload @phone', async ({ page }
 test('a swap is recorded in history and the new card counts as owned', async ({ page }) => {
   await importBackup(page);
   await openDeck(page, 'Rat Pack');
+  await page.locator('.row', { has: page.locator('[data-cut="Sol Ring"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Sol Ring"]');
   await page.fill('#s-in', 'Brainstorm');
   await page.locator('#g-in button .nm', { hasText: /^Brainstorm$/ }).click();
@@ -69,13 +70,15 @@ test('a swap is recorded in history and the new card counts as owned', async ({ 
   await page.click('[data-tab="history"]');
   await expect(page.locator('.hist .entry').first()).toContainText('Sol Ring');
   await expect(page.locator('.hist .entry').first()).toContainText('Brainstorm');
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
-  await expect(page.locator('.tab.on')).toContainText('Owned');
+  await expect(page.locator('.subtab.on')).toContainText('Owned');
   await expect(page.locator('.plist .row', { hasText: 'Brainstorm' })).toContainText('In deck');
   // Undo takes the new card back off the owned list.
   await page.click('[data-tab="history"]');
   await page.click('[data-act="undo"]');
   await page.click('[data-act="undo-yes"]');
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
   await expect(page.locator('.plist .row', { hasText: 'Brainstorm' })).toHaveCount(0);
 });
@@ -209,6 +212,7 @@ test('cards not marked owned in an older backup become an incoming change', asyn
   await openDeck(page, 'Rat Pack');
   await expect(page.locator('.groups .row', { hasText: 'Typhoid Rats' })).toHaveCount(0);
   await expect(page.locator('.inc')).toContainText('Typhoid Rats');
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="removed"]');
   await expect(page.locator('.plist .row', { hasText: 'Typhoid Rats' })).toHaveCount(0);
   await page.click('[data-tab="history"]');

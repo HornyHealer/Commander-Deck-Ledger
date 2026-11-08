@@ -28,7 +28,9 @@ async function addIn(page, name) {
 }
 // Cut Sol Ring for Back to Basics (not owned) and Swamp for Brainstorm (an owned card cut earlier).
 async function stageSwap(page) {
+  await page.locator('.row', { has: page.locator('[data-cut="Sol Ring"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Sol Ring"]');
+  await page.locator('.row', { has: page.locator('[data-cut="Swamp"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Swamp"]');
   await addIn(page, 'Back to Basics');
   await addIn(page, 'Brainstorm');
@@ -62,6 +64,7 @@ test('Arrived applies the swap, adds new cards to owned, and can be undone', asy
   await expect(page.locator('.inc')).toHaveCount(0);
   await expect(row(page, 'Sol Ring')).toHaveCount(0);
   await expect(row(page, 'Back to Basics')).toHaveCount(1);
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
   await expect(page.locator('.plist .row', { hasText: 'Back to Basics' })).toContainText('In deck');
   await page.click('[data-tab="history"]');
@@ -80,11 +83,13 @@ test('an incoming change can go back to the bench or be cancelled, and cards can
   await stageSwap(page);
   await page.click('[data-act="save-incoming"]');
   // A second change can't take out the same Sol Ring again.
+  await page.locator('.row', { has: page.locator('[data-cut="Sol Ring"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Sol Ring"]');
   await page.click('[data-act="save-incoming"]');
   await expect(page.locator('.toast')).toContainText('already leaving');
   await page.click('[data-act="clear-bench"]');
   // A second, separate incoming change.
+  await page.locator('.row', { has: page.locator('[data-cut="Arcane Signet"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Arcane Signet"]');
   await addIn(page, 'Counterspell');
   await page.click('[data-act="save-incoming"]');
@@ -106,12 +111,14 @@ test('a spare card that is part of an incoming change is marked in the card bin'
 });
 
 test('Save change counts new cards as owned right away, with no print step', async ({ page }) => {
+  await page.locator('.row', { has: page.locator('[data-cut="Island"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Island"]');
   await addIn(page, 'Back to Basics');
   await page.click('[data-act="commit"]');
   await expect(row(page, 'Back to Basics')).toHaveCount(1);
   await expect(page.locator('[data-print]')).toHaveCount(0);
   await expect(page.locator('.summary')).not.toContainText('To print');
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
   await expect(page.locator('.plist .row', { hasText: 'Back to Basics' })).toContainText('In deck');
 });

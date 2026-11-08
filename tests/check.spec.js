@@ -97,6 +97,7 @@ test('creating from a check can take cards from other decks, logged in both deck
   await page.click('[data-act="home"]');
   await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
   await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(0);
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
   await expect(page.locator('.plist .row', { hasText: 'Lightning Bolt' })).toHaveCount(0);
   await page.click('[data-tab="history"]');
@@ -117,6 +118,7 @@ test('undoing the move from the deck it left puts the card back and clears both 
   await expect(page.locator('.hist .entry').first()).not.toContainText('Goblin Time');
   await page.click('[data-tab="current"]');
   await expect(deckRow(page, 'Lightning Bolt')).toHaveCount(1);
+  await page.click('[data-tab="history"]');
   await page.click('[data-tab="printed"]');
   await expect(page.locator('.plist .row', { hasText: 'Lightning Bolt' })).toContainText('In deck');
   await page.click('[data-act="home"]');

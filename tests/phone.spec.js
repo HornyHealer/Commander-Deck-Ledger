@@ -23,9 +23,12 @@ test('on a phone the swap bench is a bar that slides up @phone', async ({ page }
   await expect(bar).toBeVisible();
   await expect(bar).toContainText('Cut or add cards');
   await expect(page.locator('#s-in')).toBeHidden();
-  // Rows aren't draggable on touch screens, and the hint says what to tap.
+  // Rows aren't draggable on touch screens.
   await expect(page.locator('.groups .row[draggable="true"]')).toHaveCount(0);
-  await expect(page.locator('.toolbar')).toContainText('Tap the scissors');
+  // No hover on a phone: tapping a card row shows its cut and role buttons.
+  const solRing = page.locator('.row', { has: page.locator('[data-cut="Sol Ring"]') }).first();
+  await solRing.locator('.q').tap();
+  await expect(solRing).toHaveClass(/\bopen\b/);
   await page.click('[data-cut="Sol Ring"]');
   await expect(page.locator('.toast')).toContainText('Sol Ring added to the swap bench');
   await expect(bar).toContainText('1 out');
@@ -37,9 +40,9 @@ test('on a phone the swap bench is a bar that slides up @phone', async ({ page }
   await page.click('[data-act="commit"]');
   await expect(page.locator('.bench.open')).toHaveCount(0);
   await expect(page.locator('.groups .row', { hasText: 'Brainstorm' })).toHaveCount(1);
-  // Row buttons are always visible on touch screens.
-  const op = await page.locator('.groups .row .acts').first().evaluate(el => getComputedStyle(el).opacity);
-  expect(op).toBe('1');
+  // Row buttons stay tucked away until a row is tapped.
+  const op = await page.locator('.groups .row:not(.open) .acts').first().evaluate(el => getComputedStyle(el).opacity);
+  expect(op).toBe('0');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -71,6 +74,7 @@ test('incoming swaps stay lined up when only some cards have a Grab button @phon
   await page.locator('.deckbox', { hasText: 'Fixture Zagras' }).click();
   const sheet = await page.locator('.sheet-bar').isVisible();
   for (const [cut, add] of [['Vampire Nighthawk', 'Necropotence'], ['Gifted Aetherborn', "Captain N'ghathrod"], ['Grim Hireling', 'Rhystic Study']]) {
+    await page.locator('.row', { has: page.locator(`[data-cut="${cut}"]`) }).first().locator('.q').click(); // a tap shows its buttons
     await page.click(`[data-cut="${cut}"]`);
     if (sheet && !(await page.locator('.bench.open').count())) await page.click('.sheet-bar');
     await page.fill('#s-in', add);

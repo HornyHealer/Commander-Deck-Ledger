@@ -266,6 +266,7 @@ test('a deck over 500 different cards shows a warning instead of saving, and sav
   await page.waitForTimeout(800);
   expect((await fakeStore(page))[DECKS + 'fixture-rats'].name).toBe('Rat Pack');
   // Cutting one card brings it back under the limit.
+  await page.locator('.row', { has: page.locator('[data-cut="Test Card 0"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Test Card 0"]');
   await page.click('[data-act="commit"]');
   await expect(page.locator('.limit-warn')).toHaveCount(0);

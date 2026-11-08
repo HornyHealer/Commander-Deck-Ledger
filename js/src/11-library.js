@@ -31,7 +31,7 @@ function renderLibrary() {
   const tools = all.length > 1 ? `<div class="toolbar libbar"><input class="field" id="f-lib" type="search" placeholder="Search decks, commanders or cards" value="${esc(S.libQ || "")}" aria-label="Search decks, commanders or cards"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-lib" aria-label="Sort decks">${LIB_SORTS.map(([v, l]) => `<option value="${v}" ${S.libSort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>` : "";
   const count = searching ? `<b>${decks.length}</b><span class="of">of ${all.length}</span>` : `<b>${String(decks.length).padStart(2, "0")}</b>`;
   const none = searching && !decks.length ? `<p class="muted lib-none">No decks match “${esc(S.libQ.trim())}”: no deck name, commander, description or card in a deck's current list has that in it.</p>` : "";
-  return `<div class="sect"><span>Decks</span>${count}</div><div class="libtools">${backupBtns()}</div>${backupWarning()}${tools}${none}<div class="lib-grid">${decks.map((d, i) => {
+  return `<div class="sect"><span>Decks</span>${count}</div><div class="libtools">${backupBtns()}</div>${backupWarning()}<div class="sheet lib-sheet">${tools}${none}<div class="lib-grid">${decks.map((d, i) => {
     const ci = deckCI(d); const changes = changeCount(d); const t = total(d); const incN = incomingOf(d).reduce((a, b) => a + qsum(b.in), 0);
     const cmd = cmdOf(d), hits = (matches.get(d.id) || {}).cards || [];
     const pin = `<button class="pinbtn${d.pinned ? " on" : ""}" data-act="pin" data-id="${esc(d.id)}" aria-pressed="${!!d.pinned}" aria-label="${d.pinned ? "Unpin" : "Pin"} ${esc(d.name)}" title="${d.pinned ? "Unpin from the top" : "Pin to the top"}">${ICONS.pin}</button>`;
@@ -48,7 +48,7 @@ function renderLibrary() {
       <div class="stats" style="margin-top:0">Last change ${fmtShort(d.updatedAt)}${(() => { const n = legality(d).length; return n ? ` · <span class="rule-issues">${n} rule issue${n === 1 ? "" : "s"}</span>` : ""; })()}</div>
       <div class="tile-foot">${arch}${pin}</div>
     </div></div>`;
-  }).join("")}</div>${renderBin()}`;
+  }).join("")}</div></div>${renderBin()}`;
 }
 function ownedRows() {
   const map = new Map();
@@ -95,15 +95,15 @@ function renderAll() {
     <div class="k"><span class="label">In bin</span><span class="v">${counts.bin}</span></div>
     <div class="k"><span class="label">Incoming</span><span class="v">${counts.toprint}</span></div>
   </div>
-  <div class="toolbar"><input class="field" id="f-all" type="search" placeholder="Find a card in your collection" value="${esc(S.allFilter || "")}" aria-label="Find a card in your collection"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-all" ${shownTotal ? "" : "disabled"}>This list<span class="mono muted">${shownTotal}</span></button><button role="menuitem" data-act="copy-all-unp" ${unpTotal ? "" : "disabled"}>Incoming only<span class="mono muted">${unpTotal}</span></button></div>` : ""}</div>
+  <div class="sheet"><div class="toolbar"><input class="field" id="f-all" type="search" placeholder="Find a card in your collection" value="${esc(S.allFilter || "")}" aria-label="Find a card in your collection"><label class="sortsel"><span class="label">Sort</span><select class="field" id="s-sort" aria-label="Sort cards within each type">${[["cost", "Cost"], ["name", "Name A–Z"], ["color", "Color"]].map(([v, l]) => `<option value="${v}" ${S.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select></label><div class="menuwrap"><button class="btn sm" data-act="copy-menu" aria-haspopup="menu" aria-expanded="${!!S.menu}">${ICONS.copy}Copy ${ICONS.caret}</button>${S.menu ? `<div class="menu" role="menu"><button role="menuitem" data-act="copy-all" ${shownTotal ? "" : "disabled"}>This list<span class="mono muted">${shownTotal}</span></button><button role="menuitem" data-act="copy-all-unp" ${unpTotal ? "" : "disabled"}>Incoming only<span class="mono muted">${unpTotal}</span></button></div>` : ""}</div>
     <div class="chips" style="flex-basis:100%">${chipB("all", "Everything")}${chipB("printed", "Owned")}${chipB("toprint", "Incoming")}${chipB("bin", "In bin")}</div></div>
   <div class="facets">
     <div class="facet"><span class="label">Type</span><div class="chips">${TYPE_ORDER.filter(g => all.some(r => typeOf(r.n) === g)).map(g => `<button class="chip${types.has(g) ? " on" : ""}" data-alltype="${g}" aria-pressed="${types.has(g)}">${TYPE_NAME[g]}</button>`).join("")}</div></div>
     <div class="facet"><span class="label">Color</span><div class="chips">${[..."WUBRG"].map(c => `<button class="chip colorchip${cols.has(c) ? " on" : ""}" data-allcolor="${c}" aria-pressed="${cols.has(c)}" title="${({ W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" })[c]}"><span class="pip ${c}">${c}</span></button>`).join("")}<button class="chip colorchip${cols.has("C") ? " on" : ""}" data-allcolor="C" aria-pressed="${cols.has("C")}"><span class="pip C">C</span>Colorless</button></div><div class="chips modeseg" role="group" aria-label="Color match">${[["incl", "Including"], ["exact", "Exactly"], ["most", "At most"]].map(([v, l]) => `<button class="chip${(S.colorMode || "incl") === v ? " on" : ""}" data-colormode="${v}" aria-pressed="${(S.colorMode || "incl") === v}" title="${v === "incl" ? "Cards that have every selected color, and maybe more" : v === "exact" ? "Cards whose colors are exactly the selected ones" : "Cards that use only the selected colors (colorless included)"}">${l}</button>`).join("")}</div></div>
     ${types.size || cols.size ? `<button class="btn sm ghost" data-act="facet-clear">Clear filters</button>` : ""}
   </div>`;
-  if (!all.length) return h + `<div class="empty"><h2>No cards yet</h2><p>Add a deck or put cards you own in the card bin, and they show up here.</p></div>`;
-  if (!shown.length) return h + `<p class="muted">No cards match${f ? ` “${esc(S.allFilter)}”` : ""} in this view.</p>`;
+  if (!all.length) return h + `<div class="empty"><h2>No cards yet</h2><p>Add a deck or put cards you own in the card bin, and they show up here.</p></div></div>`;
+  if (!shown.length) return h + `<p class="muted">No cards match${f ? ` “${esc(S.allFilter)}”` : ""} in this view.</p></div>`;
   const groups = new Map();
   for (const r of shown) { const g = typeOf(r.n); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(r); }
   h += `<div class="groups all-list">`;
@@ -117,7 +117,7 @@ function renderAll() {
       return `<div class="row"><span class="q">${qOf(r)}</span><span class="nm"><span>${cardLink(r.n)}</span>${flags}<small class="where">${r.printed ? `${r.printed} owned` : "Not owned yet"}${where ? " · " : ""}${where}</small></span>${rc ? pipsFor(rc[1]) : "<span></span>"}<span class="acts"></span></div>`;
     }).join("")}</div>`;
   }
-  return h + `</div>`;
+  return h + `</div></div>`;
 }
 function artSrcOf(d) { const a = artNameOf(d); if (!a) return ""; return d.artUrl && d.artFor === a ? d.artUrl : imgUrl(a, "art_crop"); }
 const PRINTS = new Map();
@@ -227,7 +227,7 @@ function renderBin() {
   // The bin folds away (closed unless opened here before) so the decks stay the focus.
   const open = !!S.binOpen;
   const fold = `<button class="bin-fold" data-act="bin-fold" aria-expanded="${open}"><h2>Card bin <span class="mono muted" style="font-size:15px">${tot}</span></h2><span class="chev">${ICONS.chev}</span></button>`;
-  let h = `<section class="bin${open ? "" : " folded"}"><div class="bin-head"><div>${fold}<p class="muted">Cards you own that aren't in any deck's current list.</p></div>`;
+  let h = `<section class="bin sheet${open ? "" : " folded"}"><div class="bin-head"><div>${fold}<p class="muted">Cards you own that aren't in any deck's current list.</p></div>`;
   if (!open) {
     const needed = rows.filter(r => r.needs.length).length;
     return h + (needed ? `<span class="flag good bin-needed">${needed} needed by an incoming change</span>` : "") + `</div></section>`;

@@ -84,13 +84,20 @@ Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen
 
 The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card), with the one-card-away list tucked behind a **Show possible combos** button. Each combo shows its cards with their pictures (click or tap one to see it bigger), what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
 
+## The deck page
+
+- The Update, Combos and Edit details buttons are icons; hover (or tab to) one and its name slides out.
+- A card's cut and role buttons appear when you hover its row; on a phone, tap the row.
+- **History** holds three parts: Changes, Removed (cards cut from the deck) and Owned (cards you own for it).
+- Lists and their search sit on a solid panel, so the moving backdrop never runs behind text.
+
 ## Sharing a deck
 
-Signed in, every deck has a read-only link, and it's the deck's own address (`…/#share-` and 22 random characters), so you can copy it from the address bar or with **Share → Copy link**. When you open it, you get your deck as usual. Anyone else, signed in or not, sees the commander, description, list, Stats and the combos you last checked, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin aren't shared.
+Signed in, every deck has a read-only link, and it's the deck's own address (`…/#share-` and 22 random characters), so you can copy it from the address bar or with **Copy link** under Sharing in the deck's Edit details (the pencil). When you open it, you get your deck as usual. Anyone else, signed in or not, sees the commander, description, list, Stats and the combos you last checked, and can copy the list or add it to their own decks. They can't change yours. History, owned cards and your card bin aren't shared.
 
 - The copy lives at `shares/{id}` in Firestore. `firestore.rules` lets anyone read one share by its id but not list them, and only the person who shared it can change or remove it.
 - The copy updates a moment after the deck's list, name, description or combos change (owned-card changes don't rewrite it).
-- **Share → Make private** removes the copy, and the old link stops working; **Share it again** makes a new link. Deleting a deck removes its link too.
+- **Edit details → Make private** removes the copy, and the old link stops working; **Share it again** makes a new link. Deleting a deck removes its link too.
 - Share links work anywhere an Archidekt link does: New deck, Check a list and Update from Archidekt. A deck added from a share link keeps it, so Update pulls in your friend's later changes.
 - Signed out, decks stay in your browser and their address is `#deck-…`, which only works for you.
 

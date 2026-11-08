@@ -158,7 +158,6 @@ test('Combos lists the combos in a deck and one card away, and counts two-card c
   await importBackup(page);
   await page.locator('.deckbox', { hasText: 'Rat Pack' }).click();
   await page.click('[data-act="toggle-bracket"]');
-  await expect(page.locator('#deck-bracket')).toContainText("Two-card combos aren't counted yet");
   await expect(page.locator('[data-act="toggle-bracket"]')).toContainText('1–2');
   await page.click('[data-act="combos"]');
   const dlg = page.locator('.dialog');
@@ -189,6 +188,7 @@ test('Combos lists the combos in a deck and one card away, and counts two-card c
   await expect(page.locator('#deck-bracket')).toContainText('1 two-card combo');
   await expect(page.locator('[data-act="combos"] .cb-count')).toHaveText('1');
   // Changing the deck makes the old check stale, so it stops counting until checked again.
+  await page.locator('.row', { has: page.locator('[data-cut="Sol Ring"]') }).first().hover(); // its buttons show on hover
   await page.click('[data-cut="Sol Ring"]');
   if (await page.locator('.sheet-bar').isVisible()) await page.click('.sheet-bar');
   await page.click('[data-act="commit"]');

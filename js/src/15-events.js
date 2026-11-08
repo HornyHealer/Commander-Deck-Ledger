@@ -8,6 +8,9 @@ document.addEventListener("click", e => {
   if (S.menu && !e.target.closest(".menuwrap [data-act='copy-menu']")) { S.menu = false; if (!e.target.closest(".menu")) render(); }
   const t = e.target.closest("button, [data-open]"); if (!t) {
     if (!e.target.closest(".search")) document.querySelectorAll(".sugg").forEach(b => b.hidden = true);
+    // Touch screens have no hover, so a tap on a card row shows its cut and role buttons.
+    const row = !canHover && e.target.closest(".row") && !e.target.closest("[data-card]") ? e.target.closest(".row") : null;
+    if (row && row.querySelector(".acts.hov")) { const was = row.classList.contains("open"); document.querySelectorAll(".row.open").forEach(r => r.classList.remove("open")); row.classList.toggle("open", !was); }
     return;
   }
   const d = S.deckId && S.decks.get(S.deckId);
@@ -110,7 +113,6 @@ document.addEventListener("click", e => {
   if (act === "clear-bench" && d) { d.bench = { out: [], in: [], note: "" }; render(); return save(d); }
   if (act === "commit" && d) return commit(d);
   if (act === "combos" && d) return openCombos(d);
-  if (act === "share" && d) return openDialog({ kind: "share", id: d.id });
   if (act && act.startsWith("share-")) return shareAct(act);
   if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
   if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
