@@ -58,7 +58,7 @@ In the saved data the owned list is still stored as `printed`, so older backups 
 
 ## Archidekt links
 
-In **New deck** and **Check a list**, paste an Archidekt deck link and press **Fetch** (or Enter) to fill in the deck list. Browsers can't read Archidekt's deck data from another site, so a small Cloudflare Worker (`worker/`, at `cdl-archidekt.deckledger.workers.dev`) fetches it and returns the plain-text list; the maybeboard and sideboard are left out and commanders are tagged. It only accepts Archidekt links and only answers this site. The deck must be public or unlisted on Archidekt. Archidekt's deck data isn't an official public API, so if they change it the Fetch button may stop working until the Worker is updated; pasting a list always works.
+In **New deck** and **Deck check**, paste an Archidekt deck link and press **Fetch** (or Enter) to fill in the deck list. Browsers can't read Archidekt's deck data from another site, so a small Cloudflare Worker (`worker/`, at `cdl-archidekt.deckledger.workers.dev`) fetches it and returns the plain-text list; the maybeboard and sideboard are left out and commanders are tagged. It only accepts Archidekt links and only answers this site. The deck must be public or unlisted on Archidekt. Archidekt's deck data isn't an official public API, so if they change it the Fetch button may stop working until the Worker is updated; pasting a list always works.
 
 The Worker deploys automatically when anything in `worker/` changes, using the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, and then fetches a real deck to check it works. It runs on Cloudflare's free plan.
 
@@ -68,9 +68,9 @@ In **New deck**, a "Your collection" section sorts the list's cards into In the 
 
 On a deck page, **Update from Archidekt** compares the deck with its Archidekt list and puts only the differences on the swap bench (cuts in Taking out, additions in Putting in), where you decide what to keep before saving. If the deck has an Archidekt link saved it fetches straight away; otherwise it asks for one, and **Save link & put changes on the bench** stores the link with the deck. Cards already incoming aren't added twice. A pasted list still works under **Or paste a list instead**.
 
-## Check a list
+## Deck check
 
-**Check a list** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "Your collection" section has one row of buttons per group, and every group starts on **New Incoming**:
+**Deck check** (top of the page) takes any pasted deck list and sorts each card by where you already own it: free in the card bin first, then owned in another deck, and finally the cards you'd need to get. Basic lands are counted but not checked. You can copy the need-to-get list or the owned list, or create a deck straight from it. When creating, a small "Your collection" section has one row of buttons per group, and every group starts on **New Incoming**:
 
 | Group | Buttons |
 | --- | --- |
@@ -84,12 +84,16 @@ Each row's cards are behind a **Show cards** toggle. With Swap from Decks chosen
 
 The **Combos** button on a deck page asks [Commander Spellbook](https://commanderspellbook.com) which combos the deck already has and which are one card away (naming the missing card), with the one-card-away list tucked behind a **Show possible combos** button. Each combo shows its cards with their pictures (click or tap one to see it bigger), what it does, how it works and a link to its Commander Spellbook page. The request goes through the same Cloudflare Worker as the Archidekt import (`POST /combos`) and is only made when someone presses the button. Two-card combos found this way count toward the deck's bracket estimate until the deck list changes; the button shows how many combos the last check found.
 
+## The top bar
+
+New deck (on the main page), Deck check and All owned cards sit on the left; the sync status, the light/dark switch and your account sit on the right. Deck check, All owned cards and light/dark are icons whose names slide out on hover (the page you're on keeps its name showing). On a phone they're one even row of icons with short labels.
+
 ## The deck page
 
 - The Update, Combos and Edit details buttons are icons; hover (or tab to) one and its name slides out.
 - A card's cut and role buttons appear when you hover its row; on a phone, tap the row.
 - **History** holds three parts: Changes, Removed (cards cut from the deck) and Owned (cards you own for it).
-- Lists and their search sit on a solid panel, so the moving backdrop never runs behind text.
+- Lists and their search sit on a dark grey panel (white in light mode), slightly see-through, so the moving backdrop stays in the background.
 
 ## Sharing a deck
 
@@ -98,7 +102,7 @@ Signed in, every deck has a read-only link, and it's the deck's own address (`�
 - The copy lives at `shares/{id}` in Firestore. `firestore.rules` lets anyone read one share by its id but not list them, and only the person who shared it can change or remove it.
 - The copy updates a moment after the deck's list, name, description or combos change (owned-card changes don't rewrite it).
 - **Edit details → Make private** removes the copy, and the old link stops working; **Share it again** makes a new link. Deleting a deck removes its link too.
-- Share links work anywhere an Archidekt link does: New deck, Check a list and Update from Archidekt. A deck added from a share link keeps it, so Update pulls in your friend's later changes.
+- Share links work anywhere an Archidekt link does: New deck, Deck check and Update from Archidekt. A deck added from a share link keeps it, so Update pulls in your friend's later changes.
 - Signed out, decks stay in your browser and their address is `#deck-…`, which only works for you.
 
 ## Bracket and roles

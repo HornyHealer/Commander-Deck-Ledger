@@ -121,7 +121,7 @@ test('cards can be added straight to the bin and moved into a deck that needs th
 test('All cards filters by color with the Exactly and At most modes', async ({ page }) => {
   await importBackup(page);
   await page.click('[data-act="all"]');
-  await expect(page.locator('.dhead h2')).toHaveText('All cards');
+  await expect(page.locator('.dhead h2')).toHaveText('All owned cards');
   await page.click('[data-allcolor="B"]');
   await page.click('[data-allcolor="R"]');
   await page.click('[data-colormode="exact"]');

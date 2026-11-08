@@ -23,7 +23,7 @@ async function fetchArchidekt(link) {
   return body;
 }
 const archMsg = err => ARCH_MSG[err && err.message] || "Archidekt didn't answer properly. Try again in a minute, or paste the list instead.";
-// Fetch button: fills the deck list box ("n" = New deck popup, "chk" = Check a list).
+// Fetch button: fills the deck list box ("n" = New deck popup, "chk" = Deck check).
 async function archFetch(where, btn) {
   const ids = { n: ["#n-link", "#n-fetch-msg"], chk: ["#chk-link", "#chk-fetch-msg"], u: ["#u-link", "#u-fetch-msg"] }[where];
   const linkEl = $(ids[0]);

@@ -48,8 +48,8 @@ test('on a phone the top bar is one even row @phone', async ({ page }, info) => 
   await page.goto('/');
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await page.click('[data-act="home"]');
-  const cells = page.locator('.topacts > *');
-  await expect(cells).toHaveCount(4); // Cards, Check, light/dark, New (no accounts in this test)
+  const cells = page.locator('.tb-left > *, .tb-right > *');
+  await expect(cells).toHaveCount(4); // New, Check, Owned, light/dark (no accounts in this test)
   const boxes = await cells.evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.width)]; }));
   expect(new Set(boxes.map(b => b[0])).size).toBe(1);   // same row
   expect(new Set(boxes.map(b => b[1])).size).toBe(1);   // same height

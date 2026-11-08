@@ -16,14 +16,18 @@ function render() {
   if (S.view === "share" && CLOUD.user && CLOUD.loaded) { const mine = [...S.decks.values()].find(x => x.shareId === S.shareId); if (mine) { S.view = "deck"; S.deckId = mine.id; } }
   if (S.view === "deck" && S.decks.has(S.deckId)) { const h = deckHash(S.decks.get(S.deckId)); if (location.hash !== h) try { history.replaceState(null, "", h); } catch { /* sandboxed */ } }
   let html = `<div class="top"><div class="brand"><h1>Commander Deck Ledger</h1><span class="barcode" aria-hidden="true"></span></div>`;
+  // Labels: lbl = always shown on wide screens, ib = slides out on hover (icon buttons), lbl-s = the short phone label.
   const lbl = (long, short) => `<span class="lbl">${long}</span><span class="lbl-s">${short}</span>`;
+  const ib = (long, short) => `<span class="ib-t">${long}</span><span class="lbl-s">${short}</span>`;
   const dark = themeNow() === "dark";
-  html += `<div class="topacts">${accountHtml()}`
-    + `<button class="btn tb${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}${lbl("All cards", "Cards")}</button>`
-    + `<button class="btn tb${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}${lbl("Check a list", "Check")}</button>`
-    + `<button class="btn tb theme" data-act="theme" aria-label="Switch to ${dark ? "light" : "dark"} mode" title="Switch to ${dark ? "light" : "dark"} mode">${dark ? ICONS.sun : ICONS.moon}${lbl(dark ? "Light" : "Dark", dark ? "Light" : "Dark")}</button>`
+  // Left: making and finding decks. Right: your account and the light/dark switch.
+  html += `<div class="topacts"><div class="tb-left">`
     + (S.view === "library" ? `<button class="btn tb primary" data-act="new">${ICONS.plus}${lbl("New deck", "New")}</button>` : "")
-    + `</div>`;
+    + `<button class="btn tb ibtn${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}${ib("Deck check", "Check")}</button>`
+    + `<button class="btn tb ibtn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}${ib("All owned cards", "Owned")}</button>`
+    + `</div><div class="tb-right">${accountSync()}`
+    + `<button class="btn tb ibtn theme" data-act="theme" aria-label="Switch to ${dark ? "light" : "dark"} mode">${dark ? ICONS.sun : ICONS.moon}${ib(dark ? "Light" : "Dark", dark ? "Light" : "Dark")}</button>`
+    + `${accountBtn()}</div></div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
   if (CLOUD.user) for (const why of blocked.values()) html += `<div class="backup-warn limit-warn" role="alert"><span><b>Not saved to your account.</b> ${why} Until then, changes to it are only on this screen and are lost if you close the site.</span></div>`;

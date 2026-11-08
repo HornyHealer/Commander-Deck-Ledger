@@ -88,7 +88,7 @@ function renderAll() {
   const shownTotal = S.allShown.reduce((a, x) => a + x.q, 0), unpTotal = S.allUnprinted.reduce((a, x) => a + x.q, 0);
   const chipB = (id, label) => `<button class="chip${chip === id ? " on" : ""}" data-allchip="${id}">${label} ${counts[id]}</button>`;
   let h = `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
-  <div class="dhead"><div><div class="eyebrow"><span class="label">Collection</span></div><h2>All cards</h2><div class="dn">${all.length} unique cards across ${S.decks.size} deck${S.decks.size === 1 ? "" : "s"} and the bin</div></div></div>
+  <div class="dhead"><div><div class="eyebrow"><span class="label">Collection</span></div><h2>All owned cards</h2><div class="dn">${all.length} unique cards across ${S.decks.size} deck${S.decks.size === 1 ? "" : "s"} and the bin</div></div></div>
   <div class="summary">
     <div class="k"><span class="label">Owned</span><span class="v">${counts.printed}</span></div>
     <div class="k"><span class="label">In decks</span><span class="v">${sum(r => r.deckQ, all)}</span></div>

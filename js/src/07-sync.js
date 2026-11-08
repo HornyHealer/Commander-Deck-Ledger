@@ -397,11 +397,16 @@ async function signOutNow() {
   if (CLOUD.pending && navigator.onLine === false) return toast("You have changes waiting to sync. Reconnect before signing out so they aren't lost.");
   try { await CLOUD.api.authM.signOut(CLOUD.api.auth); toast("Signed out."); } catch { toast("Couldn't sign out. Try again."); }
 }
-function accountHtml() {
+// The top bar's right side: the sync status (or a retry button), then the account button (or Sign in).
+function accountSync() {
   if (!CLOUD.enabled) return "";
   if (CLOUD.failed) return `<button class="sync-chip warn chipbtn" data-act="sync-retry" title="Firebase didn't load${CLOUD.err ? ": " + esc(CLOUD.err) : ""}. Tap to try again.">Sync unavailable · Retry</button>`;
-  if (!CLOUD.authReady) return "";
+  if (!CLOUD.authReady || !CLOUD.user) return "";
+  return `<span id="sync-status" class="sync-chip${CLOUD.pending ? " busy" : ""}" role="status">${syncText()}</span>`;
+}
+function accountBtn() {
+  if (!CLOUD.enabled || CLOUD.failed || !CLOUD.authReady) return "";
   if (!CLOUD.user) return `<button class="btn" data-act="signin">${ICONS.user}Sign in</button>`;
   const initials = (CLOUD.user.name || CLOUD.user.email || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
-  return `<span id="sync-status" class="sync-chip${CLOUD.pending ? " busy" : ""}" role="status">${syncText()}</span><div class="menuwrap"><button class="btn acct" data-act="acct-menu" aria-haspopup="menu" aria-expanded="${CLOUD.menu}" title="${esc(CLOUD.user.email)}"><span class="avatar">${esc(initials)}</span><span class="acct-name">${esc(CLOUD.user.name || CLOUD.user.email)}</span></button>${CLOUD.menu ? `<div class="menu acct-menu" role="menu"><span class="menu-note">${esc(CLOUD.user.email)}</span><button role="menuitem" data-act="signout">Sign out</button></div>` : ""}</div>`;
+  return `<div class="menuwrap"><button class="btn acct" data-act="acct-menu" aria-haspopup="menu" aria-expanded="${CLOUD.menu}" title="${esc(CLOUD.user.email)}"><span class="avatar">${esc(initials)}</span><span class="acct-name">${esc(CLOUD.user.name || CLOUD.user.email)}</span></button>${CLOUD.menu ? `<div class="menu acct-menu" role="menu"><span class="menu-note">${esc(CLOUD.user.email)}</span><button role="menuitem" data-act="signout">Sign out</button></div>` : ""}</div>`;
 }

@@ -333,7 +333,10 @@ a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 2p
 .checkline { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; }
 input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 
-.topacts { display: flex; gap: 8px; flex-wrap: wrap; }
+/* The top bar: making and finding decks on the left, account and light/dark on the right. */
+.topacts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; width: 100%; }
+.tb-left, .tb-right { display: flex; gap: 8px; align-items: center; }
+.tb-right { margin-left: auto; }
 .menuwrap { position: relative; }
 .menu { position: absolute; right: 0; top: calc(100% + 2px); z-index: 30; background: var(--surface); border: 1px solid var(--rule); padding: 3px; min-width: 200px; display: grid; box-shadow: 6px 6px 0 var(--ink); }
 .menu button { display: flex; justify-content: space-between; gap: 12px; background: none; border: 0; padding: 8px 10px; text-align: left; font-family: var(--wide); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
@@ -411,7 +414,7 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .signin-note > div { flex: 1 1 320px; min-width: 0; }
 .signin-note b { display: block; font-family: var(--wide); font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3px; }
 @media (max-width: 520px) { .acct-name { display: none; } .btn.acct { padding: 5px; } }
-.menu.acct-menu { left: 0; right: auto; min-width: 220px; max-width: calc(100vw - 32px); }
+.menu.acct-menu { left: auto; right: 0; min-width: 220px; max-width: calc(100vw - 32px); }
 
 /* Deck insight: description, bracket, roles, past versions */
 .ddesc { margin: 10px 0 0; max-width: 62ch; font-size: 14px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -736,16 +739,17 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 @media (max-width: 600px) {
   .top { align-items: stretch; }
   .topacts { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; width: 100%; }
-  .topacts > .btn, .topacts > .sync-chip, .topacts > .menuwrap > .btn, .topacts > .chipbtn {
+  .tb-left, .tb-right { display: contents; }
+  .topacts .btn.tb, .topacts .sync-chip, .topacts .menuwrap > .btn, .topacts .chipbtn, .tb-right > .btn {
     flex-direction: column; justify-content: center; align-items: center; gap: 5px; height: 54px; width: 100%; padding: 6px 2px; text-align: center; }
-  .topacts > .menuwrap { display: flex; min-width: 0; }
-  .topacts .btn .lbl { display: none; }
+  .topacts .menuwrap { display: flex; min-width: 0; }
+  .topacts .btn .lbl, .topacts .btn .ib-t { display: none; }
   .topacts .btn .lbl-s { display: block; font-size: 8.5px; letter-spacing: .08em; line-height: 1; white-space: nowrap; }
   .topacts .btn .icon { width: 17px; height: 17px; }
-  .topacts > .sync-chip { display: flex; outline: 1px solid var(--line); outline-offset: -1px; font-size: 8.5px; letter-spacing: .06em; line-height: 1.15; padding: 6px 4px; white-space: normal; }
-  .topacts > .sync-chip::before { content: "■"; font-size: 12px; vertical-align: 0; }
-  .topacts > .chipbtn { font-size: 8.5px; line-height: 1.2; white-space: normal; }
-  .topacts > .menuwrap > .btn.acct { font-size: 13px; }
+  .topacts .sync-chip { display: flex; outline: 1px solid var(--line); outline-offset: -1px; font-size: 8.5px; letter-spacing: .06em; line-height: 1.15; padding: 6px 4px; white-space: normal; }
+  .topacts .sync-chip::before { content: "■"; font-size: 12px; vertical-align: 0; }
+  .topacts .chipbtn { font-size: 8.5px; line-height: 1.2; white-space: normal; }
+  .topacts .menuwrap > .btn.acct { font-size: 13px; }
 }
 
 /* ---------- Card bin fold ---------- */
@@ -850,8 +854,8 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 
 /* ---------- panels, icon buttons, history subtabs ---------- */
 /* An opaque box behind lists and their search, so the moving backdrop never sits behind text. */
-.sheet { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px 16px; }
-.lib-sheet { background: var(--sunk); }
+.sheet { background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); padding: 14px 16px 16px; }
+.lib-sheet { background: color-mix(in srgb, var(--sunk) 88%, transparent); }
 .lib-sheet:not(:has(.libbar, .lib-none)) { padding-top: 16px; }
 .bin.sheet { padding-top: 12px; }
 @media (max-width: 640px) { .sheet { padding: 12px 10px 14px; } }
@@ -861,7 +865,7 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .iacts { flex-wrap: nowrap; }
 .ibtn { gap: 0; padding: 8px 11px; }
 .ibtn .ib-t { display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: max-width .25s ease, opacity .2s ease, margin-left .25s ease; }
-.ibtn:hover .ib-t, .ibtn:focus-visible .ib-t { max-width: 24ch; opacity: 1; margin-left: 8px; }
+.ibtn:hover .ib-t, .ibtn:focus-visible .ib-t, .ibtn.on .ib-t { max-width: 24ch; opacity: 1; margin-left: 8px; }
 
 /* Cut and role buttons on a card row: shown on hover or keyboard focus (or a tap on touch screens),
    pushing the mana cost along. */

@@ -26,7 +26,7 @@ const LIST = '1 Krenko, Mob Boss [Commander]\n1 Arcane Signet\n1 Fervent Champio
 
 test('sorts a pasted list into card bin, other decks, and need to get @phone', async ({ page }) => {
   await page.click('[data-act="check"]');
-  await expect(page.locator('.dhead h2')).toHaveText('Check a list');
+  await expect(page.locator('.dhead h2')).toHaveText('Deck check');
   await page.fill('#chk-list', LIST);
   const res = page.locator('#chk-results');
   await expect(res.locator('.chk-bin')).toContainText('Arcane Signet');
