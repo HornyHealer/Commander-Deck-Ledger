@@ -19,14 +19,15 @@ function render() {
   // Labels: lbl = always shown on wide screens, ib = slides out on hover (icon buttons), lbl-s = the short phone label.
   const lbl = (long, short) => `<span class="lbl">${long}</span><span class="lbl-s">${short}</span>`;
   const ib = (long, short) => `<span class="ib-t">${long}</span><span class="lbl-s">${short}</span>`;
-  const dark = themeNow() === "dark";
+  const cur = themeNow(), ci = THEMES.findIndex(([k]) => k === cur), nx = THEMES[(ci + 1) % THEMES.length];
   // Left: making and finding decks. Right: your account and the light/dark switch.
   html += `<div class="topacts"><div class="tb-left">`
     + (S.view === "library" ? `<button class="btn tb primary" data-act="new">${ICONS.plus}${lbl("New deck", "New")}</button>` : "")
     + `<button class="btn tb ibtn${S.view === "check" ? " on" : ""}" data-act="${S.view === "check" ? "home" : "check"}" aria-pressed="${S.view === "check"}">${ICONS.list}${ib("Deck check", "Check")}</button>`
     + `<button class="btn tb ibtn${S.view === "all" ? " on" : ""}" data-act="${S.view === "all" ? "home" : "all"}" aria-pressed="${S.view === "all"}">${ICONS.stack}${ib("All owned cards", "Owned")}</button>`
     + `</div><div class="tb-right">${accountSync()}`
-    + `<button class="btn tb ibtn theme" data-act="theme" aria-label="Switch to ${dark ? "light" : "dark"} mode">${dark ? ICONS.sun : ICONS.moon}${ib(dark ? "Light" : "Dark", dark ? "Light" : "Dark")}</button>`
+    + `<span class="themes" role="group" aria-label="Theme">${THEMES.map(([k, l, ic]) => `<button class="th${k === cur ? " on" : ""}" data-act="theme" data-v="${k}" aria-pressed="${k === cur}" title="${l}">${ICONS[ic]}<span class="vh">${l}</span></button>`).join("")}</span>`
+    + `<button class="btn tb theme-step" data-act="theme" data-v="${nx[0]}" aria-label="Theme: ${THEMES[ci][1]}. Switch to ${nx[1]}">${ICONS[THEMES[ci][2]]}<span class="lbl-s">${THEMES[ci][1]}</span></button>`
     + `${accountBtn()}</div></div>`;
   html += `</div>`;
   if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
@@ -58,11 +59,18 @@ function render() {
 // ---------- light and dark ----------
 // Follows the device until the switch in the top bar is used; then the choice is remembered in this browser.
 // (index.html applies a saved choice before the page draws, so it never flashes the other theme.)
-function themeNow() { const t = document.documentElement.dataset.theme; return t === "dark" || t === "light" ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+// Themes: dark and light (Marathon), and Starlight (a night sky in Star Guardian Soraka's colors).
+const THEMES = [["dark", "Dark", "moon"], ["light", "Light", "sun"], ["starlight", "Starlight", "star"]];
+const STAR_FONTS = "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Jost:wght@400;500;600&display=swap";
+function themeNow() { const t = document.documentElement.dataset.theme; return THEMES.some(([k]) => k === t) ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+const starlit = () => document.documentElement.dataset.theme === "starlight";
 function setTheme(t) {
+  if (!THEMES.some(([k]) => k === t)) return;
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("cdl-theme", t); } catch {}
-  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = t === "dark" ? "#0b0b0a" : "#efeef7";
+  if (t === "starlight") slPaint(true); // the nebula for its transformations (10-starlight.js)
+  if (t === "starlight" && !document.getElementById("star-fonts")) { const l = document.createElement("link"); l.rel = "stylesheet"; l.id = "star-fonts"; l.href = STAR_FONTS; document.head.appendChild(l); }
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = t === "light" ? "#efeef7" : t === "starlight" ? "#02040f" : "#0b0b0a";
   if (window.LedgerBackdrop) window.LedgerBackdrop.refresh();
   render();
   if (!reduceMotion()) playGlitch($(".view"));

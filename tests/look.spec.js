@@ -25,21 +25,29 @@ test('the card bin starts folded and remembers being opened @phone', async ({ pa
   await expect(page.locator('.bin .row')).toHaveCount(0);
 });
 
-test('the light/dark switch overrides the device setting and is remembered @phone', async ({ page }) => {
+test('the theme switch overrides the device setting and is remembered @phone', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const pick = t => page.click(`[data-act="theme"][data-v="${t}"]:visible`); // wide: three buttons; phone: one that steps to the next
   await expect.poll(bg).toBe('rgb(11, 11, 10)');
-  const sw = page.locator('[data-act="theme"]');
-  await expect(sw).toHaveAttribute('aria-label', 'Switch to light mode');
-  await sw.click();
+  await pick('light');
   await expect.poll(bg).toBe('rgb(239, 238, 247)');                  // white with a lilac tint
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.locator('[data-act="theme"]')).toHaveAttribute('aria-label', 'Switch to dark mode');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light'); // applied before the page draws
   await expect.poll(bg).toBe('rgb(239, 238, 247)');
-  await page.click('[data-act="theme"]');
+  // Starlight: a night sky in its own fonts, which load only for this theme
+  await expect(page.locator('#star-fonts')).toHaveCount(0);
+  await pick('starlight');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'starlight');
+  await expect(page.locator('#star-fonts')).toHaveCount(1);
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundImage)).toContain('linear-gradient');
+  await expect(page.locator('.bd-frame')).toBeHidden();               // the night sky has no console frame
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'starlight');
+  await expect(page.locator('#star-fonts')).toHaveCount(1);
+  await pick('dark');
   await expect.poll(bg).toBe('rgb(11, 11, 10)');
 });
 
@@ -48,8 +56,8 @@ test('on a phone the top bar is one even row @phone', async ({ page }, info) => 
   await page.goto('/');
   await page.getByRole('button', { name: 'Try an example deck' }).click();
   await page.click('[data-act="home"]');
-  const cells = page.locator('.tb-left > *, .tb-right > *');
-  await expect(cells).toHaveCount(4); // New, Check, Owned, light/dark (no accounts in this test)
+  const cells = page.locator('.tb-left > :visible, .tb-right > :visible');
+  await expect(cells).toHaveCount(4); // New, Check, Owned, theme (no accounts in this test)
   const boxes = await cells.evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.width)]; }));
   expect(new Set(boxes.map(b => b[0])).size).toBe(1);   // same row
   expect(new Set(boxes.map(b => b[1])).size).toBe(1);   // same height

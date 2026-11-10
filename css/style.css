@@ -711,6 +711,7 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .boot-map i { aspect-ratio: 1; background: #1f1f1c; animation: boot-cell 2.2s steps(1, end) infinite; animation-delay: var(--d); }
 .boot-map i.f1 { background: #ff2e7a; } .boot-map i.f2 { background: #2fd3f0; } .boot-map i.f3 { background: #6f6f68; }
 @keyframes boot-cell { 0% { } 45% { background: #d2ff1f; } 80% { background: #d2ff1f; } }
+.boot-star { display: none; } /* Starlight's loading screen (css/starlight.css) */
 .boot-s { display: flex; gap: 14px; flex-wrap: wrap; font: 500 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: #8f8f86; }
 .boot-n::before { content: "// "; color: #d2ff1f; }
 .boot-n::after { content: ""; display: inline-block; width: 7px; height: 11px; margin-left: 6px; vertical-align: -1px; background: #d2ff1f; animation: boot-caret .7s steps(1, end) infinite; }
@@ -734,7 +735,15 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 
 /* ---------- Top bar: labels, light/dark switch ---------- */
 .btn .lbl-s { display: none; }
-.btn.tb.theme .icon { width: 14px; height: 14px; }
+/* the theme switch: three small buttons in one frame; on phones, one button that steps through them */
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.themes { display: inline-flex; border: 1px solid var(--rule); background: var(--surface); }
+.themes .th { background: none; border: 0; padding: 7px 9px; color: var(--muted); display: inline-flex; }
+.themes .th + .th { border-left: 1px solid var(--line); }
+.themes .th:hover { color: var(--ink); background: var(--sunk); }
+.themes .th.on { background: var(--ink); color: var(--bg); }
+.themes .icon { width: 14px; height: 14px; }
+.theme-step { display: none !important; }
 /* Phones: one even row of equal buttons, icon over a short label. */
 @media (max-width: 600px) {
   .top { align-items: stretch; }
@@ -746,6 +755,8 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
   .topacts .btn .lbl, .topacts .btn .ib-t { display: none; }
   .topacts .btn .lbl-s { display: block; font-size: 8.5px; letter-spacing: .08em; line-height: 1; white-space: nowrap; }
   .topacts .btn .icon { width: 17px; height: 17px; }
+  .topacts .themes { display: none; }
+  .topacts .theme-step { display: flex !important; }
   .topacts .sync-chip { display: flex; outline: 1px solid var(--line); outline-offset: -1px; font-size: 8.5px; letter-spacing: .06em; line-height: 1.15; padding: 6px 4px; white-space: normal; }
   .topacts .sync-chip::before { content: "■"; font-size: 12px; vertical-align: 0; }
   .topacts .chipbtn { font-size: 8.5px; line-height: 1.2; white-space: normal; }

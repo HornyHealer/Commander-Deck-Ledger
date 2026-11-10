@@ -74,6 +74,8 @@ function blocksHtml(cols, rows, dur, lines) {
 }
 // Plays the glitch over a whole view (mode "view") or a popup (mode "pop").
 function playGlitch(target, mode = "view") {
+  // The Starlight theme transforms instead (10-starlight.js); a tab's contents get the quick version.
+  if (starlit()) { if (!reduceMotion()) starTransform(target, mode === "view" ? "view" : target && target.matches(".tabpanel") ? "tab" : "pop"); return; }
   const pop = mode === "pop", tag = pop ? "p" : "v", dur = pop ? GLITCH_POP_MS : GLITCH_MS;
   document.querySelectorAll(`.vfx.${tag}, .vfx-ghosts.${tag}`).forEach(el => el.remove());
   if (!target || !target.isConnected) return;
@@ -122,6 +124,7 @@ function revealBoot() {
   if (reduceMotion()) { boot.remove(); return; }
   const wait = Math.max(0, BOOT_MIN_MS - performance.now());
   setTimeout(() => {
+    if (starlit()) return starReveal(boot);
     boot.classList.add("boot-out"); // a hard glitch on the text first
     setTimeout(() => {
       const cols = Math.max(8, Math.round(innerWidth / 56)), rows = Math.max(8, Math.round(innerHeight / 40));
@@ -135,6 +138,7 @@ function revealBoot() {
 // A smaller version for a card image as it finishes loading.
 function glitchImage(img) {
   if (reduceMotion() || !img.isConnected || !img.offsetWidth || !img.offsetHeight) return;
+  if (starlit()) return starTransform(img, "img");
   vfxFilters();
   const host = img.offsetParent; if (!host) return;
   host.querySelectorAll(".vfx-img").forEach(el => { if (el._for === img) el.remove(); });
@@ -159,4 +163,4 @@ document.addEventListener("click", e => {
 });
 // Card images glitch in when they load: the hover preview, Combos' card pictures and the artwork choices.
 const GLITCH_IMG_SEL = ".cardpv img, .cb-img, .print img, .artprev, .hand-card img";
-document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.matches(GLITCH_IMG_SEL) && !t.closest(".vfx-ghosts, .vfx-img")) glitchImage(t); }, true);
+document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.matches(GLITCH_IMG_SEL) && !t.closest(".vfx-ghosts, .vfx-img, .sl-gal")) glitchImage(t); }, true);

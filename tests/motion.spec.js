@@ -130,3 +130,39 @@ test('switching a deck tab, and opening or closing a fold, glitches just that pa
   await page.click('.bin-fold');
   await expect(page.locator('.vfx.p')).toHaveCount(1);
 });
+
+test('in Starlight, changing boxes fill with a nebula and open from the center, then clean up', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 5000 });
+  await page.getByRole('button', { name: 'Try an example deck' }).click();
+  await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0, { timeout: 2000 });
+  await page.click('.themes [data-v="starlight"]');
+  // a whole page: each panel on screen gets its own nebula, inside its own shape
+  await expect(page.locator('.sl-gal').first()).toBeAttached();
+  await expect(page.locator('.vfx, .vfx-ghosts')).toHaveCount(0); // no glitch in this theme
+  const shapes = await page.evaluate(() => [...document.querySelectorAll('.sl-gal')].map(g => {
+    const r = g.getBoundingClientRect(); return [...document.querySelectorAll('.sheet, .summary, .bench')].some(b => { const q = b.getBoundingClientRect(); return Math.abs(q.left - r.left) < 2 && Math.abs(q.width - r.width) < 2; });
+  }));
+  expect(shapes.length).toBeGreaterThan(0);
+  expect(shapes.every(Boolean)).toBe(true);
+  await expect(page.locator('canvas.sl-fx')).toHaveCount(1);
+  await expect(page.locator('.sl-gal, .sl-rimbox')).toHaveCount(0, { timeout: 4000 }); // all of it removes itself
+  // a popup gets its own, and taps still work afterwards
+  await page.click('[data-act="edit"]');
+  await expect(page.locator('.sl-gal')).toHaveCount(1);
+  await expect(page.locator('.sl-gal')).toHaveCount(0, { timeout: 3000 });
+  await page.click('[data-dlg="close"] >> nth=0');
+  await page.click('[data-tab="stats"]');
+  await expect(page.locator('.sl-gal')).toHaveCount(1); // just the tab's contents
+  await expect(page.locator('.sl-gal')).toHaveCount(0, { timeout: 3000 });
+  expect(errors).toEqual([]);
+});
+
+test('Starlight loads with its own loading screen', async ({ page }) => {
+  await page.addInitScript(() => { try { localStorage.setItem('cdl-theme', 'starlight'); } catch {} });
+  await page.goto('/');
+  await expect(page.locator('#boot .boot-star')).toBeVisible();
+  await expect(page.locator('#boot .boot-in')).toBeHidden();
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 6000 });
+});

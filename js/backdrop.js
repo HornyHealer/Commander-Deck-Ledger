@@ -2,6 +2,8 @@
 //   a grid of squares inside a console frame, with a slow wave of lighter and darker squares rolling from the
 //   bottom right to the top left; chip blocks, traces and a braided band laid over it with short "weave worms"
 //   crawling along them; terminal readouts typing in the margins over faint rails.
+// In the Starlight theme it draws a night sky instead: a faint Milky Way with dust lanes, stars at several depths
+// (the brightest with lens spikes), breathing constellation lines, a crescent moon and the odd shooting star.
 // Colours come from the theme (--bd-* in css/style.css). It redraws 20 times a second, stops while the tab is
 // hidden, and draws one still frame for anyone set to reduce motion. js/app.js passes in the deck names
 // (window.LedgerBackdrop.setDecks) and asks for a redraw when the theme changes (refresh).
@@ -29,7 +31,7 @@
     const st = getComputedStyle(document.documentElement);
     const v = n => st.getPropertyValue(n).trim();
     const bg = v("--bg").replace("#", ""), lum = bg.length >= 6 ? (parseInt(bg.slice(0, 2), 16) + parseInt(bg.slice(2, 4), 16) + parseInt(bg.slice(4, 6), 16)) / 765 : 1;
-    C = { bg: v("--bg"), ink: v("--ink"), acid: v("--acid"), dark: lum < .5,
+    C = { bg: v("--bg"), ink: v("--ink"), acid: v("--acid"), dark: lum < .5, sky: document.documentElement.dataset.theme === "starlight",
       grid: v("--bd-grid"), trace: v("--bd-trace"), weave: v("--bd-weave"), worm: v("--bd-worm"), text: v("--bd-text"), hi: v("--bd-hi") };
   }
   function rgba(hexc, a) {
@@ -342,8 +344,86 @@
     }
     cx.restore();
   }
+  // ---------- Starlight: the night sky ----------
+  let sky = null; // { base (the still parts, drawn once per size), stars, consts, shoot, next }
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  let flareImg = null;
+  function flare() { // a star with four long thin spikes, drawn once
+    if (flareImg) return flareImg;
+    const S = 64, m = S / 2, c = document.createElement("canvas"); c.width = c.height = S; const g = c.getContext("2d");
+    const glow = g.createRadialGradient(m, m, 0, m, m, m * .45); glow.addColorStop(0, "rgba(220,235,255,.8)"); glow.addColorStop(1, "rgba(220,235,255,0)");
+    g.fillStyle = glow; g.fillRect(0, 0, S, S); g.globalCompositeOperation = "lighter";
+    for (const [len, wid, ang] of [[m, 1.2, 0], [m, 1.2, Math.PI / 2], [m * .45, .7, Math.PI / 4], [m * .45, .7, -Math.PI / 4]]) {
+      g.save(); g.translate(m, m); g.rotate(ang);
+      const lg = g.createLinearGradient(-len, 0, len, 0); lg.addColorStop(0, "rgba(255,255,255,0)"); lg.addColorStop(.5, "#fff"); lg.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = lg; g.beginPath(); g.moveTo(-len, 0); g.lineTo(0, -wid); g.lineTo(len, 0); g.lineTo(0, wid); g.closePath(); g.fill(); g.restore();
+    }
+    return flareImg = c;
+  }
+  function buildSky() {
+    const base = document.createElement("canvas"); base.width = Math.round(W * dpr); base.height = Math.round(H * dpr);
+    const b = base.getContext("2d"); b.scale(dpr, dpr);
+    // the Milky Way: a soft diagonal band of blue-violet haze, thick with tiny stars, with dark dust through it
+    const along = (t, off) => [W * (-.1 + 1.2 * t), H * (.95 - .9 * t) + off];
+    b.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 220; i++) {
+      const [x, y] = along(Math.random(), rnd(-1, 1) * rnd(0, H * .14)), r = rnd(30, 120), c = Math.random() < .6 ? "70,110,210" : Math.random() < .5 ? "120,100,220" : "60,170,190";
+      const rg = b.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, `rgba(${c},.035)`); rg.addColorStop(1, `rgba(${c},0)`); b.fillStyle = rg; b.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let i = 0; i < W * H / 200; i++) {
+      const [x, y] = Math.random() < .55 ? along(Math.random(), rnd(-1, 1) * rnd(0, H * .12) * rnd(.2, 1)) : [rnd(0, W), rnd(0, H)];
+      b.fillStyle = `rgba(${Math.random() < .3 ? "200,220,255" : "255,255,255"},${rnd(.08, .4)})`; b.fillRect(x, y, rnd(.4, 1.1), rnd(.4, 1.1));
+    }
+    b.globalCompositeOperation = "source-over";
+    for (let i = 0; i < 80; i++) {
+      const [x, y] = along(Math.random(), rnd(-1, 1) * rnd(0, H * .04)), r = rnd(20, 60);
+      const rg = b.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, "rgba(2,4,15,.18)"); rg.addColorStop(1, "rgba(2,4,15,0)"); b.fillStyle = rg; b.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // a thin crescent moon with a soft halo, high on the right
+    const mx = W * .87, my = Math.min(120, H * .15), mr = W < 600 ? 15 : 22;
+    const halo = b.createRadialGradient(mx, my, mr * .6, mx, my, mr * 5); halo.addColorStop(0, "rgba(230,215,170,.16)"); halo.addColorStop(1, "rgba(230,215,170,0)");
+    b.fillStyle = halo; b.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
+    const mc = document.createElement("canvas"), ms = mr * 4; mc.width = mc.height = Math.round(ms * dpr); const mg = mc.getContext("2d"); mg.scale(dpr, dpr);
+    const c0 = ms / 2, shade = mg.createLinearGradient(c0 - mr, c0, c0 + mr, c0); shade.addColorStop(0, "#fff6dc"); shade.addColorStop(.55, "#ead6a4"); shade.addColorStop(1, "#bfa266");
+    mg.shadowColor = "rgba(255,240,200,.9)"; mg.shadowBlur = 14; mg.fillStyle = shade; mg.beginPath(); mg.arc(c0, c0, mr, 0, 6.28); mg.fill();
+    mg.shadowBlur = 0; mg.globalCompositeOperation = "destination-out"; mg.beginPath(); mg.arc(c0 + mr * .45, c0 - mr * .22, mr * .9, 0, 6.28); mg.fill();
+    b.drawImage(mc, mx - c0, my - c0, ms, ms);
+    // stars that twinkle (mostly faint; the brightest get spikes) and a few constellations
+    const stars = Array.from({ length: Math.round(W * H / 6500) }, () => { const k = Math.random(); return { x: rnd(0, W), y: rnd(0, H), r: k > .985 ? rnd(1.2, 1.8) : rnd(.35, 1), p: rnd(0, 6.28), s: rnd(.4, 1.6), c: Math.random() < .2 ? (Math.random() < .5 ? "#cfe4ff" : "#d9fff0") : "#ffffff", big: k > .985 }; });
+    const consts = Array.from({ length: Math.max(2, Math.round(W / 520)) }, () => {
+      let x = rnd(60, W - 60), y = rnd(60, H * .7); const pts = [[x, y]];
+      for (let k = 0; k < 5; k++) { x += rnd(-80, 80); y += rnd(-60, 60); pts.push([x, y]); }
+      return { pts, p: rnd(0, 6.28) };
+    });
+    sky = { base, stars, consts, shoot: null, next: clock + rnd(4, 9), w: W, h: H };
+  }
+  function drawSky(still) {
+    if (!sky || sky.w !== W || sky.h !== H) buildSky();
+    const t = clock * 1000;
+    cx.drawImage(sky.base, 0, 0, W, H);
+    for (const c of sky.consts) {
+      cx.strokeStyle = `rgba(200,225,255,${.05 + .04 * Math.sin(t / 3000 + c.p)})`; cx.lineWidth = .7;
+      cx.beginPath(); c.pts.forEach(([x, y], i) => i ? cx.lineTo(x, y) : cx.moveTo(x, y)); cx.stroke();
+    }
+    for (const st of sky.stars) {
+      cx.globalAlpha = still ? .7 : .3 + .7 * Math.pow(.5 + .5 * Math.sin(t / 1000 * st.s + st.p), 2);
+      if (st.big) { const z = 26 + st.r * 8; cx.drawImage(flare(), st.x - z / 2, st.y - z / 2, z, z); }
+      else { cx.fillStyle = st.c; cx.beginPath(); cx.arc(st.x, st.y, st.r, 0, 6.28); cx.fill(); }
+    }
+    cx.globalAlpha = 1;
+    if (still) return;
+    if (!sky.shoot && clock > sky.next) sky.shoot = { x: rnd(W * .3, W), y: rnd(0, H * .3), t0: clock };
+    if (sky.shoot) {
+      const k = (clock - sky.shoot.t0) / .7, x = sky.shoot.x - k * 420, y = sky.shoot.y + k * 170, fade = Math.sin(Math.min(1, k) * Math.PI);
+      const g = cx.createLinearGradient(x, y, x + 150, y - 61); g.addColorStop(0, `rgba(255,255,255,${.9 * fade})`); g.addColorStop(1, "rgba(160,220,255,0)");
+      cx.strokeStyle = g; cx.lineWidth = 1.2; cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + 150, y - 61); cx.stroke();
+      if (k > 1) { sky.shoot = null; sky.next = clock + rnd(7, 15); }
+    }
+  }
+
   function frame(dt, still) {
     cx.clearRect(0, 0, W, H);
+    if (C.sky) { drawSky(still); return; }
     const st = STRENGTH[S.level];
     drawGrid(st);
     drawGeo(dt, st, still);
@@ -378,7 +458,7 @@
       if (list.length && list.join("|") !== DECKS.join("|")) DECKS = list.slice(0, 40);
       if (reduce.matches && grid) still(); // the page changed: redraw the still frame so nothing sits under new text
     },
-    refresh() { readColors(); if (grid) buildGeometry(); if (reduce.matches) still(); },
+    refresh() { readColors(); sky = null; if (grid) buildGeometry(); if (reduce.matches) still(); },
   };
   readColors(); layout();
   document.fonts && document.fonts.ready.then(() => { terms.forEach(t => { const pos = t.pos; newScript(t, true); t.pos = Math.min(pos, t.lines.join("\n").length); }); if (reduce.matches) still(); });

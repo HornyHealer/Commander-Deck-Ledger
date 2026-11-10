@@ -10,8 +10,9 @@ Track Commander decks: every swap, every cut, every card you own, cards on the w
 | --- | --- |
 | `index.html` | The page shell |
 | `manifest.webmanifest`, `icons/`, `sw.js` | Install-as-an-app details and the offline copy |
-| `css/style.css` | All styling |
-| `js/src/` | The app's code, in 17 files by area (sync, deck screens, stats, sharing, popups and so on). They're joined in name order into `js/app.js` by `node scripts/build-app.mjs` and share one scope. `js/app.js` is generated and not kept in the repository; the tests and the deploy build it. |
+| `css/style.css` | All styling for the dark and light themes |
+| `css/starlight.css` | The Starlight theme's styling (only applies while Starlight is picked) |
+| `js/src/` | The app's code, in 18 files by area (sync, deck screens, stats, sharing, popups and so on). They're joined in name order into `js/app.js` by `node scripts/build-app.mjs` and share one scope. `js/app.js` is generated and not kept in the repository; the tests and the deploy build it. |
 | `js/card-rules.js` | Reads card text for partner rules, copy limits, extra turns, mass land denial and suggested roles; shared by the site and the card-list builder |
 | `js/firebase-config.js` | Firebase settings for accounts and sync |
 | `firestore.rules` | Database security rules to paste into Firebase |
@@ -86,7 +87,7 @@ The **Combos** button on a deck page asks [Commander Spellbook](https://commande
 
 ## The top bar
 
-New deck (on the main page), Deck check and All owned cards sit on the left; the sync status, the light/dark switch and your account sit on the right. Deck check, All owned cards and light/dark are icons whose names slide out on hover (the page you're on keeps its name showing). On a phone they're one even row of icons with short labels.
+New deck (on the main page), Deck check and All owned cards sit on the left; the sync status, the theme switch (dark, light, Starlight) and your account sit on the right. Deck check and All owned cards are icons whose names slide out on hover (the page you're on keeps its name showing). On a phone they're one even row of icons with short labels, and the theme switch is one button that steps to the next theme.
 
 ## The deck page
 
@@ -129,10 +130,19 @@ Land colors come from the card list: each land's record ends with the colors it 
 
 Above the decks (once there are two or more): a search box that finds decks by name, commander or description, or by a card in a deck's current list (every word has to match; punctuation is ignored, so "nghathrod" finds Captain N'ghathrod; matching cards are listed on the tile; Escape clears it), and a sort menu (last changed, deck name, commander, or bracket from high to low), remembered in that browser. The pin button on each tile keeps a deck at the top whatever the sort. A pin syncs with the account but isn't a change to the deck: it doesn't move "last change" or add to the history.
 
+## Starlight theme
+
+The star in the theme switch picks Starlight: a night sky in Star Guardian Soraka's colours (her mint green, ivory, antique gold and a touch of pink), inspired by magical-girl transformations. It's original artwork in that spirit: no characters, logos or emblems from League of Legends or anything else.
+
+- **Look** (`css/starlight.css`): dark glass panels with a hairline edge, a mint-and-gold highlight along the top and a small gold star at one corner; Cormorant Garamond headings and Jost for everything else (both load only for people who pick Starlight); slim glass buttons, a mint gem for the main button, mint serif numbers instead of filled badges, tabs with a glowing underline, and mana symbols shaded like gems.
+- **Sky** (`js/backdrop.js`): a faint Milky Way with dark dust lanes, stars at several depths (the brightest with long lens spikes) that twinkle, faint constellation lines, a shaded crescent moon and the odd shooting star. No console frame.
+- **Transformations** (`js/src/10-starlight.js`, used instead of the glitch): each box that changes fills with a green nebula, in the box's own shape, that radiates out from its centre while strands of starlight sweep across and wrap it; a glint passes over, then it opens from the centre in a ring of mint light. About 2 seconds for a whole page, 1.5 for a popup and under a second for a tab or a card picture. The nebula is painted once when the theme is picked (greens from deep forest to Soraka's mint, never black). Everything but the sparkles is animated by the graphics chip, scrolling ends it early, and it's skipped with reduced motion.
+- **Loading screen**: a glinting star and "Gathering starlight", which bursts into sparkles as the page transforms in.
+
 ## Backdrop, light/dark and the top bar
 
 - **Backdrop** (`js/backdrop.js`): a canvas behind the page inside a console frame, at a quiet strength: a grid of squares with a slow wave of lighter and darker squares rolling from the bottom right to the top left, chip blocks and traces with a braided band and short "weave worms" crawling along them, and terminal readouts that type out fresh text (using your deck names) over faint rails. On wide screens the readouts sit in the side margins; otherwise one runs low on the left and only shows where the page isn't. It redraws 20 times a second, stops while the tab is hidden, and draws one still frame with reduced motion. Its colours are the `--bd-*` tokens in `css/style.css`.
-- **Light and dark**: the switch in the top bar overrides the device setting and is remembered in that browser (`cdl-theme`); `index.html` applies it before the page draws. Light mode uses white, lilac purple, mint teal and black (after the Sekiguchi Genetics palette); its glitch effects split into purple and teal instead of red and cyan.
+- **Themes**: the switch in the top bar (dark, light, Starlight) overrides the device setting and is remembered in that browser (`cdl-theme`); `index.html` applies it before the page draws. Light mode uses white, lilac purple, mint teal and black (after the Sekiguchi Genetics palette); its glitch effects split into purple and teal instead of red and cyan.
 - **Phones**: the top bar is one even row of icon buttons with short labels.
 - **Card bin**: folded away under its heading so the decks are the focus; opening it is remembered (`cdl-bin-open`). The tests start with it open.
 
