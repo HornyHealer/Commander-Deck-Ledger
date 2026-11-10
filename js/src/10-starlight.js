@@ -152,13 +152,22 @@ function slPaint(now) {
 }
 
 // ---- the transformation ----
-// A rectangle with a round hole of radius rad at (hx, hy), as one polygon (evenodd cuts the hole out), so the
-// hole can grow as an ordinary clip-path animation.
-function slHoled(w, h, hx, hy, rad) {
-  const pts = ["0 0", `${w}px 0`, `${w}px ${h}px`, `0 ${h}px`, "0 0"];
-  for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 2; pts.push(`${(hx + Math.cos(a) * rad).toFixed(1)}px ${(hy + Math.sin(a) * rad).toFixed(1)}px`); }
-  pts.push("0 0");
+// The box's own shape (a rectangle with corners rounded by cr) with a round hole of radius rad at (hx, hy), as one
+// polygon (evenodd cuts the hole out), so the hole can grow as an ordinary clip-path animation.
+function slHoled(w, h, hx, hy, rad, cr) {
+  const pts = [], c = Math.min(cr || 0, w / 2, h / 2), px = (x, y) => `${x.toFixed(1)}px ${y.toFixed(1)}px`;
+  // corners clockwise from the top right, each as a few points along a quarter circle
+  for (const [cx, cy, a0] of [[w - c, c, -90], [w - c, h - c, 0], [c, h - c, 90], [c, c, 180]])
+    for (let k = 0; k <= 6; k++) { const a = (a0 + k * 15) * Math.PI / 180; pts.push(px(cx + Math.cos(a) * c, cy + Math.sin(a) * c)); }
+  pts.push(pts[0]);
+  for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 2; pts.push(px(hx + Math.cos(a) * rad, hy + Math.sin(a) * rad)); }
+  pts.push(pts[0]);
   return `polygon(evenodd, ${pts.join(", ")})`;
+}
+// An element's corner radius in pixels (card pictures give theirs in percent).
+function slRadius(el, w) {
+  const v = getComputedStyle(el).borderTopLeftRadius.split(" ")[0] || "0";
+  return v.endsWith("%") ? parseFloat(v) / 100 * w : parseFloat(v) || 0;
 }
 // The panels that transform when a whole page changes: the outermost ones on screen.
 const SL_BOXES = ".sheet, .summary, .bench, .empty, .signin-note, .snap-banner, .compare, .checks, .inc, .check-input, .backup-warn";
@@ -182,10 +191,10 @@ function starTransform(target, mode = "view") {
   list.forEach((el, k) => {
     const r = el.getBoundingClientRect(), top = Math.max(0, r.top), bot = Math.min(innerHeight, r.bottom), w = r.width, h = bot - top;
     if (h <= 4 || w <= 4) return;
-    const radius = getComputedStyle(el).borderRadius, delay = mode === "view" ? k * 70 : 0;
-    const box = { left: r.left + "px", top: top + "px", width: w + "px", height: h + "px", borderRadius: radius };
+    const cr = slRadius(el, w), delay = mode === "view" ? k * 70 : 0;
+    const box = { left: r.left + "px", top: top + "px", width: w + "px", height: h + "px", borderRadius: cr + "px" };
     const hx = w / 2, hy = h / 2, far = Math.hypot(hx, hy) + 8;
-    boxes.push({ x: r.left, y: top, w, h, rad: parseFloat(radius) || 0 });
+    boxes.push({ x: r.left, y: top, w, h, rad: cr });
     // the nebula, in two layers that swell outward from the center (the nearer one faster), turning slowly
     const gal = document.createElement("div"); gal.className = "sl-gal" + (mode === "img" || mode === "pop" ? " up" : ""); gal.setAttribute("aria-hidden", "true");
     Object.assign(gal.style, box, { opacity: 0 });
@@ -197,18 +206,19 @@ function starTransform(target, mode = "view") {
     if (!SL.nebula) SL.painting.then(() => { if (SL.nebula && n1.isConnected) n1.style.backgroundImage = n2.style.backgroundImage = `url(${SL.nebula})`; });
     gal.append(n1, n2, gleam);
     // the ring of light, kept inside the box
-    const rimbox = document.createElement("div"); rimbox.className = "sl-rimbox" + (mode === "img" || mode === "pop" ? " up" : ""); rimbox.setAttribute("aria-hidden", "true"); Object.assign(rimbox.style, box);
+    const rimbox = document.createElement("div"); rimbox.className = "sl-rimbox" + (mode === "img" || mode === "pop" ? " up" : ""); rimbox.setAttribute("aria-hidden", "true");
+    Object.assign(rimbox.style, box, { clipPath: `inset(0 round ${cr}px)` }); // the ring stays inside the rounded corners
     const rim = document.createElement("div"); rim.className = "sl-rim";
     Object.assign(rim.style, { left: (hx - far) + "px", top: (hy - far) + "px", width: far * 2 + "px", height: far * 2 + "px", opacity: 0 });
     rimbox.appendChild(rim);
     document.body.append(gal, rimbox); parts.push(gal, rimbox);
     const opt = { duration: total, delay, fill: "both" };
     anims.push(gal.animate([
-      { opacity: 0, clipPath: slHoled(w, h, hx, hy, 0) },
-      { opacity: 1, clipPath: slHoled(w, h, hx, hy, 0), offset: g * .6 },
-      { opacity: 1, clipPath: slHoled(w, h, hx, hy, 0), offset: g, easing: out },
-      { opacity: 1, clipPath: slHoled(w, h, hx, hy, far), offset: go },
-      { opacity: 0, clipPath: slHoled(w, h, hx, hy, far) }], opt));
+      { opacity: 0, clipPath: slHoled(w, h, hx, hy, 0, cr) },
+      { opacity: 1, clipPath: slHoled(w, h, hx, hy, 0, cr), offset: g * .6 },
+      { opacity: 1, clipPath: slHoled(w, h, hx, hy, 0, cr), offset: g, easing: out },
+      { opacity: 1, clipPath: slHoled(w, h, hx, hy, far, cr), offset: go },
+      { opacity: 0, clipPath: slHoled(w, h, hx, hy, far, cr) }], opt));
     const swell = { duration: total, delay, fill: "both", easing: "cubic-bezier(.15,.55,.35,1)" };
     anims.push(n1.animate([{ transform: "rotate(-8deg) scale(.7)" }, { transform: "rotate(14deg) scale(1.18)" }], swell));
     anims.push(n2.animate([{ transform: "rotate(30deg) scale(.45)", opacity: 0 }, { opacity: .24, offset: .3 }, { transform: "rotate(-6deg) scale(1.6)", opacity: .14 }], swell));
