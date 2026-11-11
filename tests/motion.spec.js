@@ -159,6 +159,24 @@ test('in Starlight, changing boxes fill with a nebula and open from the center, 
   expect(errors).toEqual([]);
 });
 
+test('in Starlight, changing pages from further down still transforms (the jump to the top does not cancel it)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.addInitScript(() => { try { localStorage.setItem('cdl-theme', 'starlight'); localStorage.setItem('cdl-bin-open', '1'); } catch {} });
+  await page.goto('/');
+  await expect(page.locator('#boot')).toHaveCount(0, { timeout: 6000 });
+  await page.getByRole('button', { name: 'Try an example deck' }).click();
+  await page.click('[data-act="home"]');
+  await expect(page.locator('.sl-gal')).toHaveCount(0, { timeout: 4000 });
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(100);
+  await page.locator('.deckbox').first().click();
+  await page.waitForTimeout(400);
+  await expect(page.locator('.sl-gal').first()).toBeAttached(); // still running after the scroll back to the top
+  // scrolling away by hand ends it early, so nothing is left floating out of place
+  await page.mouse.wheel(0, 400);
+  await expect(page.locator('.sl-gal')).toHaveCount(0, { timeout: 1000 });
+});
+
 test('Starlight loads with its own loading screen', async ({ page }) => {
   await page.addInitScript(() => { try { localStorage.setItem('cdl-theme', 'starlight'); } catch {} });
   await page.goto('/');

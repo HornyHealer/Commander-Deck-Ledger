@@ -263,12 +263,14 @@ function starTransform(target, mode = "view") {
     anims.forEach(a => a.cancel()); parts.forEach(p => p.remove()); SL.clips.delete(boxes);
     if (SL.view === end) SL.view = null;
   };
-  if (mode !== "img") SL.view = end;
+  if (mode !== "img") { SL.view = end; SL.y = scrollY; SL.w = innerWidth; }
   setTimeout(end, total + 70 * boxes.length + 60);
 }
-// The panels sit still on screen while they transform, so scrolling or resizing ends it early.
-addEventListener("scroll", () => { if (SL.view) SL.view(); }, { passive: true });
-addEventListener("resize", () => { if (SL.view) SL.view(); });
+// The panels sit still on screen while they transform, so scrolling away or resizing ends it early. Not the
+// jump back to the top that comes with changing pages (its scroll event can arrive just after the effect has
+// started), and not a phone's address bar sliding in or out (which only changes the height).
+addEventListener("scroll", () => { if (SL.view && Math.abs(scrollY - SL.y) > 12) SL.view(); }, { passive: true });
+addEventListener("resize", () => { if (SL.view && innerWidth !== SL.w) SL.view(); });
 
 // The loading screen in Starlight: a glinting star and "Gathering starlight"; it bursts into sparkles and fades
 // as the page transforms in.
