@@ -504,6 +504,11 @@ input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
 .check-acts { display: flex; gap: 6px; flex-wrap: wrap; margin: -8px 0 16px; }
 .check-acts .btn .mono { margin-left: 6px; }
 .check-groups { columns: 1; }
+/* the list as a deck (cards, curve, rules, bracket, combos) above the tabs */
+.chk-deck { margin-bottom: 14px; }
+.chk-deck .chk-combos { margin-top: 2px; }
+.chk-deck .chk-combos .mono { margin-right: 4px; }
+.chk-sheet .summary { margin-top: 2px; }
 .check-groups .group .check-hint { margin: 6px 0; }
 .chk-need h3 { color: var(--warn); }
 @media (max-width: 900px) {

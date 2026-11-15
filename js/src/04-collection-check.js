@@ -15,7 +15,16 @@ function collectionCheck(cards) {
     return { n: c.n, q: c.q, fromBin, fromDecks, need: c.q - fromBin - fromDecks, decks, binFrom: b ? b.srcs.map(x => x.name) : [], binInc: b && b.inc, incoming: incoming.get(c.n) || [] };
   });
 }
-let CHECK_TEXT = "", CHECK_LINK = ""; try { CHECK_TEXT = localStorage.getItem("cdl-check-text") || ""; CHECK_LINK = localStorage.getItem("cdl-check-link") || ""; } catch {}
+let CHECK_TEXT = "", CHECK_LINK = "", CHECK_COMBOS = null;
+try { CHECK_TEXT = localStorage.getItem("cdl-check-text") || ""; CHECK_LINK = localStorage.getItem("cdl-check-link") || ""; CHECK_COMBOS = JSON.parse(localStorage.getItem("cdl-check-combos") || "null"); } catch {}
+// The pasted list as a deck of its own (not saved), so the deck page's rules check, bracket, curve, Stats tab
+// and combo finder all work on it. Its last combo check is kept with the list (cdl-check-combos) and only
+// counts while the list is unchanged (deckCombos compares fingerprints).
+function checkDeck() {
+  const p = S.checkParsed || parseList(CHECK_TEXT);
+  return { id: "check", name: "This list", commanders: p.commanders, cur: p.cards, log: [], combos: CHECK_COMBOS };
+}
+function saveCheckCombos(c) { CHECK_COMBOS = c; try { localStorage.setItem("cdl-check-combos", JSON.stringify(c)); } catch {} }
 function renderCheck() {
   return `<button class="crumb" data-act="home">${ICONS.back}All decks</button>
   <div class="dhead"><div><div class="eyebrow"><span class="label">Collection</span></div><h2>Deck check</h2><div class="dn">Paste any deck list to see which cards you already own</div></div></div>
@@ -26,6 +35,8 @@ function checkResults() {
   const p = parseList(CHECK_TEXT); S.checkParsed = p;
   if (!p.cards.length) return `<div class="empty"><h2>Nothing to check yet</h2><p>Paste a list on the left and each card is sorted into what's free in your card bin, what's owned in another deck, and what you'd need to get.</p></div>`;
   const rows = collectionCheck(p.cards); S.checkRows = rows;
+  const d = checkDeck(), tab = S.checkTab === "stats" ? "stats" : "own";
+  if (S.hand && S.hand.id === "check" && S.hand.sig !== deckSig(d)) S.hand = null; // a new list deals a new sample hand
   const tot = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
   const basics = rows.filter(r => r.basic); const nBasic = qsum(basics);
   const nBin = tot("fromBin"), nDeck = tot("fromDecks"), nNeed = tot("need"), all = qsum(rows);
@@ -36,7 +47,12 @@ function checkResults() {
   const deckL = list(rows.filter(r => r.fromDecks), r => line(r, r.fromDecks, "In " + r.decks.map(x => esc(x.name) + (x.q > 1 ? ` ×${x.q}` : "")).join(", ")));
   const needL = list(rows.filter(r => r.need), r => line(r, r.need, r.incoming.length ? "Already incoming for " + r.incoming.map(esc).join(", ") : "", !rec(r.n) ? '<span class="flag warn">Unrecognized</span>' : ""));
   const grp = (id, title, n, body, extra = "") => body ? `<div class="group chk-${id}"><h3>${title}<span class="mono">${n}</span></h3>${extra}${body}</div>` : "";
-  return `<div class="summary">
+  return `${checkDeckStrip(d)}
+    <div class="sheet chk-sheet"><div class="tabs" role="tablist">
+      <button class="tab${tab === "own" ? " on" : ""}" role="tab" aria-selected="${tab === "own"}" data-act="chk-tab" data-v="own">What you own<span class="n">${nNeed ? nNeed + " to get" : "all"}</span></button>
+      <button class="tab${tab === "stats" ? " on" : ""}" role="tab" aria-selected="${tab === "stats"}" data-act="chk-tab" data-v="stats">Stats</button>
+    </div>
+    <div class="tabpanel" role="tabpanel">${tab === "stats" ? renderStats(d) : `<div class="summary">
       <div class="k"><span class="label">In list</span><span class="v">${all}</span></div>
       <div class="k"><span class="label">In card bin</span><span class="v ${nBin ? "ok" : ""}">${nBin}</span></div>
       <div class="k"><span class="label">In other decks</span><span class="v">${nDeck}</span></div>
@@ -50,7 +66,26 @@ function checkResults() {
       ${grp("bin", "Free in the card bin", nBin, binL)}
       ${grp("decks", "Owned in another deck", nDeck, deckL, `<p class="muted check-hint">Using these means cutting them from that deck first.</p>`)}
       ${nBasic ? `<div class="group"><h3>Basic lands<span class="mono">${nBasic}</span></h3><p class="muted check-hint">Not checked: ${basics.map(r => `${r.q} ${esc(r.n)}`).join(", ")}.</p></div>` : ""}
-    </div>`;
+    </div>`}</div></div>`;
+}
+// The list as a deck: card count, lands, curve, rules check and bracket (both open for details, as on a deck
+// page), and the combo finder.
+function checkDeckStrip(d) {
+  const t = total(d), lands = d.cur.filter(c => typeOf(c.n) === "L").reduce((a, c) => a + c.q, 0);
+  const curve = Array(8).fill(0);
+  d.cur.forEach(c => { if (typeOf(c.n) !== "L" && !d.commanders.includes(c.n)) curve[Math.min(7, cmcOf(c.n))] += c.q; });
+  const mx = Math.max(1, ...curve), cb = deckCombos(d);
+  // The rules check's advice is about decks; here the commander is marked in the pasted list.
+  const issues = legality(d).map(x => x.kind === "commander" && !d.commanders.length ? { ...x, text: "No commander marked. Add [Commander] after its name, or put it under a Commander heading." } : x);
+  const br = bracketOf(d.cur, cb);
+  return `<div class="summary chk-deck">
+      <div class="k"><span class="label">Cards</span><span class="v ${t === 100 ? "ok" : "warn"}">${t}<span class="muted" style="font-size:13px">/100</span></span></div>
+      <div class="k"><span class="label">Lands</span><span class="v">${lands}</span></div>
+      <div class="k"><span class="label">Curve</span><div class="curve">${curve.map(v => `<div style="height:${Math.round(v / mx * 100)}%" title="${v}"></div>`).join("")}</div><div class="curve-l">${curve.map((_, i) => `<span>${i === 7 ? "7+" : i}</span>`).join("")}</div></div>
+      <div class="k"><span class="label">Rules</span><span class="checkcell">${issues.length ? `<button class="flag bad flagbtn" data-act="toggle-checks" aria-expanded="${!!S.showChecks}" aria-controls="deck-checks">${issues.length} issue${issues.length === 1 ? "" : "s"} ${S.showChecks ? "▴" : "▾"}</button>` : `<span class="flag good">Legal</span>`}</span></div>
+      <div class="k"><span class="label">Bracket</span><button class="v bracket-btn" data-act="toggle-bracket" aria-expanded="${!!S.showBracket}" aria-controls="deck-bracket" title="Why this bracket?">${esc(br.label)}<span class="bname">${esc(br.name)} ${S.showBracket ? "▴" : "▾"}</span></button></div>
+      <div class="k"><span class="label">Combos</span><button class="btn sm chk-combos" data-act="chk-combos">${ICONS.combo}${cb ? `<span class="mono">${cb.count}</span> found` : "Find"}</button></div>
+    </div>${renderChecks(d, issues)}${renderBracket(br)}`;
 }
 function updateCheck() { const el = $("#chk-results"); if (el) el.innerHTML = checkResults(); }
 

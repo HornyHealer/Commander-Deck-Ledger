@@ -5,6 +5,7 @@ const ARCH_PROXY = "https://cdl-archidekt.deckledger.workers.dev/";
 const archId = s => { const t = String(s || "").trim(); const m = t.match(/archidekt\.com\/(?:api\/)?decks\/(\d+)/i); return m ? m[1] : /^\d{1,12}$/.test(t) ? t : ""; };
 const ARCH_MSG = {
   "bad-link": "That doesn't look like an Archidekt or shared deck link. It should look like archidekt.com/decks/12345/deck-name, or a shared deck link from this site.",
+  "moxfield": "Moxfield doesn't let other sites read its decks. On Moxfield, use the deck's Export option to copy the list, then paste it below.",
   "share-missing": "That shared deck isn't there. The link may be mistyped, or its owner stopped sharing it.",
   "share-off": "Couldn't reach shared decks just now. Check your connection, or paste the list instead.",
   "share-none": "Shared decks aren't set up on this copy of the site. Paste the list instead.",
@@ -16,6 +17,8 @@ const ARCH_MSG = {
 };
 async function fetchArchidekt(link) {
   const sid = shareIdOf(link); if (sid) return fetchShare(sid); // a shared deck link from this site
+  // Moxfield only lets approved apps read its decks, so for now its lists are pasted in.
+  if (/(^|\/\/|\.)moxfield\.com\//i.test(link)) throw new Error("moxfield");
   const id = archId(link); if (!id) throw new Error("bad-link");
   let res; try { res = await fetch(ARCH_PROXY + "?deck=" + encodeURIComponent(id)); } catch { throw new Error("network"); }
   let body = {}; try { body = await res.json(); } catch {}
@@ -47,7 +50,7 @@ async function archFetch(where, btn) {
       const ta = $("#chk-list"); if (ta) ta.value = CHECK_TEXT; updateCheck();
     }
     say(`Fetched ${deck.count} cards from “${deck.name || "your deck"}”.`);
-  } catch (err) { say(archMsg(err), true); if (!["bad-link", "not-found", "private", "empty", "network", "share-missing", "share-off", "share-none", "share-err"].includes(err && err.message)) reportError("archidekt", "Archidekt import: " + (err && err.message), where); }
+  } catch (err) { say(archMsg(err), true); if (!["bad-link", "not-found", "private", "empty", "network", "moxfield", "share-missing", "share-off", "share-none", "share-err"].includes(err && err.message)) reportError("archidekt", "Archidekt import: " + (err && err.message), where); }
   finally { const b = $(`[data-arch="${where}"]`); if (b) { b.disabled = false; if (b.dataset.label) b.innerHTML = b.dataset.label; } }
 }
 
@@ -56,6 +59,8 @@ async function archFetch(where, btn) {
 function deckSig(d) { let h = 5381; const s = d.cur.map(c => c.n + ":" + c.q).sort().join("|"); for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); }
 // The deck's last combo check, if the list hasn't changed since.
 const deckCombos = d => d && d.combos && d.combos.sig === deckSig(d) ? d.combos : null;
+// The deck a combo popup is about: a saved deck, or the list on the Deck check page.
+const comboDeck = id => id === "check" ? checkDeck() : S.decks.get(id);
 async function fetchCombos(d) {
   const cmds = (d.commanders || []).filter(n => d.cur.some(c => c.n === n));
   const body = { commanders: cmds, main: d.cur.filter(c => !cmds.includes(c.n)).map(c => ({ card: c.n, quantity: c.q })) };
@@ -70,7 +75,7 @@ async function openCombos(d) {
   try {
     const data = await fetchCombos(d);
     d.combos = { at: Date.now(), sig: deckSig(d), count: data.included.length, two: data.included.filter(c => c.twoCard).map(c => ({ cards: c.cards, produces: c.produces.slice(0, 3) })) };
-    save(d);
+    if (d.id === "check") saveCheckCombos(d.combos); else save(d);
     if (S.dialog && S.dialog.kind === "combos" && S.dialog.id === d.id) { S.dialog.state = "ok"; S.dialog.data = data; renderDialog(); }
     render();
   } catch (err) {
@@ -91,7 +96,7 @@ function comboHtml(c, missing) {
     ${c.id ? `<a class="cb-link" href="${CSB}/combo/${encodeURIComponent(c.id)}/" target="_blank" rel="noopener">View on Commander Spellbook ${ICONS.ext}</a>` : ""}</li>`;
 }
 function combosDialogHtml(dl) {
-  const d = S.decks.get(dl.id); let body;
+  const d = comboDeck(dl.id); let body;
   if (dl.state === "loading") body = `<p class="muted">Checking ${esc(d.name)} with Commander Spellbook…</p>`;
   else if (dl.state === "err") body = `<p class="fetch-msg bad">${esc(dl.err)}</p><button class="btn sm" data-act="combos-retry">Try again</button>`;
   else {
@@ -102,7 +107,7 @@ function combosDialogHtml(dl) {
       ? `<section class="cb-sec" id="cb-possible"><h3>One card away <span class="mono">${dl.data.almostTotal}</span><button class="btn sm ghost cb-hide" data-act="combos-possible">Hide</button></h3><ul class="combos">${shown.map(c => comboHtml(c, c.missing)).join("")}</ul>${almost.length > shown.length ? `<button class="btn sm ghost" data-act="combos-more">Show ${almost.length - shown.length} more</button>` : ""}${dl.data.almostTotal > almost.length && dl.showAll ? `<p class="muted cb-note">Showing the ${almost.length} most popular.</p>` : ""}</section>`
       : `<button class="btn cb-possible" data-act="combos-possible" aria-expanded="false">${ICONS.caret}Show possible combos<span class="mono muted">${dl.data.almostTotal}</span></button><p class="muted cb-note">Combos this deck is one card away from.</p>`;
   }
-  return `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Combos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">${esc(d.name)}: combos the deck already has, and ones it's one card away from.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
+  return `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-t"><header><div><h2 id="dlg-t">Combos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">${d.id === "check" ? "This list" : esc(d.name)}: combos ${d.id === "check" ? "it" : "the deck"} already has, and ones it's one card away from.</p></div><button class="iconbtn" data-dlg="close" aria-label="Close">${ICONS.x}</button></header>
     <div class="db">${body}</div>
     <footer><span class="grow cb-credit">Combo data from <a href="${CSB}" target="_blank" rel="noopener">Commander Spellbook</a></span><button class="btn primary" data-dlg="close">Done</button></footer></div>`;
 }

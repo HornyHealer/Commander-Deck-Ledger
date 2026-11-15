@@ -98,7 +98,7 @@ function newHand(d, mull) {
   const cmdrs = new Set(d.commanders || []), lib = [];
   for (const c of d.cur) if (!cmdrs.has(c.n)) for (let k = 0; k < c.q; k++) lib.push(c.n);
   for (let k = lib.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [lib[k], lib[j]] = [lib[j], lib[k]]; }
-  S.hand = { id: d.id, lib, shown: Math.min(7, lib.length), mull: mull || 0 };
+  S.hand = { id: d.id, sig: deckSig(d), lib, shown: Math.min(7, lib.length), mull: mull || 0 };
 }
 function statsHand(d) {
   if (!S.hand || S.hand.id !== d.id) newHand(d, 0);

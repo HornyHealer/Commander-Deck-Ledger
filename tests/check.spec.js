@@ -33,7 +33,7 @@ test('sorts a pasted list into card bin, other decks, and need to get @phone', a
   await expect(res.locator('.chk-bin')).toContainText('Fervent Champion');
   await expect(res.locator('.chk-decks')).toContainText('Sol Ring');
   await expect(res.locator('.chk-need')).toContainText('Rhystic Study');
-  await expect(res.locator('.summary')).toContainText('Basic lands');
+  await expect(res.locator('.summary:not(.chk-deck)')).toContainText('Basic lands');
   await expect(res.locator('.chk-need')).not.toContainText('Mountain');
   // The pasted list is still there after a reload.
   await page.reload();
@@ -303,4 +303,66 @@ test('the collection buttons say what they do', async ({ page }) => {
   await expect(page.locator('.rule', { hasText: 'In the card bin' }).locator('.seg .chip')).toHaveText(['New Incoming', 'Use Owned']);
   await expect(page.locator('.rule', { hasText: 'In other decks' }).locator('.seg .chip')).toHaveText(['Swap from Decks', 'New Incoming', 'Add to Collection']);
   await expect(page.locator('.rule', { hasText: 'Not owned' }).locator('.seg .chip')).toHaveText(['New Incoming', 'Add to Collection']);
+});
+
+// The list as a deck: count, lands, curve, rules and bracket, a Stats tab and the combo finder.
+test('the check page shows the list as a deck: count, lands, curve, rules and bracket', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', LIST);
+  const strip = page.locator('.chk-deck');
+  await expect(strip.locator('.k', { hasText: 'Cards' }).locator('.v')).toContainText('25');
+  await expect(strip.locator('.k', { hasText: 'Lands' }).locator('.v')).toHaveText('20');
+  await expect(strip.locator('.curve div')).toHaveCount(8);
+  await expect(strip.locator('[data-act="toggle-checks"]')).toContainText('issue'); // 25 cards, not 100
+  await page.click('.chk-deck [data-act="toggle-checks"]');
+  await expect(page.locator('#deck-checks')).toContainText('75 cards short of 100');
+  await expect(strip.locator('.bracket-btn')).toBeVisible();
+  await page.click('.chk-deck [data-act="toggle-bracket"]');
+  await expect(page.locator('#deck-bracket')).toBeVisible();
+  // With no commander marked, the advice is about the pasted list, not Edit details.
+  await page.fill('#chk-list', LIST.replace(' [Commander]', ''));
+  await expect(page.locator('#deck-checks')).toContainText('No commander marked');
+});
+
+test('the check page has a Stats tab, with a sample hand from the list', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', LIST);
+  await expect(page.locator('.chk-groups, .check-groups')).toBeVisible();
+  await page.click('[data-act="chk-tab"][data-v="stats"]');
+  await expect(page.locator('.statsview')).toContainText('Mana curve');
+  await expect(page.locator('.statsview')).toContainText('Colors');
+  await expect(page.locator('.hand .hand-card')).toHaveCount(7);
+  await page.click('[data-act="hand-draw"]');
+  await expect(page.locator('.hand .hand-card')).toHaveCount(8);
+  // A different list deals a fresh hand.
+  await page.fill('#chk-list', LIST + '\n1 Lightning Bolt');
+  await expect(page.locator('.hand .hand-card')).toHaveCount(7);
+  await page.click('[data-act="chk-tab"][data-v="own"]');
+  await expect(page.locator('.check-groups')).toBeVisible();
+});
+
+test('the check page finds combos in the list, and remembers them while the list is unchanged', async ({ page, context }) => {
+  let sent = null;
+  const COMBOS = { included: [{ id: '1-2', cards: ['Krenko, Mob Boss', 'Sol Ring'], templates: [], produces: ['Infinite tests'], steps: '', prereq: '', mana: '', twoCard: true }], almost: [], almostTotal: 0 };
+  await context.route('https://cdl-archidekt.deckledger.workers.dev/combos', r => { sent = JSON.parse(r.request().postData() || '{}'); r.fulfill({ contentType: 'application/json', body: JSON.stringify(COMBOS) }); });
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-list', LIST);
+  await page.click('[data-act="chk-combos"]');
+  await expect(page.locator('.dialog')).toContainText('Infinite tests');
+  await expect(page.locator('.dialog')).toContainText('This list');
+  expect(sent.commanders).toEqual(['Krenko, Mob Boss']);
+  await page.click('[data-dlg="close"] >> nth=0');
+  await expect(page.locator('[data-act="chk-combos"]')).toContainText('1 found');
+  await page.reload();
+  await expect(page.locator('[data-act="chk-combos"]')).toContainText('1 found');
+  // a changed list needs checking again
+  await page.fill('#chk-list', LIST + '\n1 Lightning Bolt');
+  await expect(page.locator('[data-act="chk-combos"]')).toContainText('Find');
+});
+
+test('a Moxfield link explains how to paste the list instead', async ({ page }) => {
+  await page.click('[data-act="check"]');
+  await page.fill('#chk-link', 'https://moxfield.com/decks/AbCdEf123');
+  await page.click('[data-arch="chk"]');
+  await expect(page.locator('#chk-fetch-msg')).toContainText("Moxfield doesn't let other sites read its decks");
 });

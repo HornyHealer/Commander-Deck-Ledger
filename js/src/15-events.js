@@ -86,7 +86,7 @@ document.addEventListener("click", e => {
   if (act === "all") { S.allFilter = ""; return go("all"); }
   // Pinning isn't a change to the deck: it syncs, but doesn't move "last change" or add to the history.
   if (act === "pin") { const pd = S.decks.get(t.dataset.id); if (pd) { pd.pinned = !pd.pinned; save(pd); toast(pd.pinned ? `Pinned ${pd.name} to the top.` : `Unpinned ${pd.name}.`); render(); } return; }
-  const hd = d || shareDeck(); // the sample hand works on a shared deck too
+  const hd = d || shareDeck() || (S.view === "check" ? checkDeck() : null); // the sample hand works on a shared deck and the Deck check list too
   if (act === "hand-new" && hd) { newHand(hd, 0); return render(); }
   if (act === "hand-mull" && hd) { newHand(hd, (S.hand && S.hand.id === hd.id ? S.hand.mull : 0) + 1); return render(); }
   if (act === "hand-draw" && hd && S.hand && S.hand.id === hd.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
@@ -114,7 +114,9 @@ document.addEventListener("click", e => {
   if (act === "commit" && d) return commit(d);
   if (act === "combos" && d) return openCombos(d);
   if (act && act.startsWith("share-")) return shareAct(act);
-  if (act === "combos-retry" && S.dialog) { const dd = S.decks.get(S.dialog.id); if (dd) openCombos(dd); return; }
+  if (act === "combos-retry" && S.dialog) { const dd = comboDeck(S.dialog.id); if (dd) openCombos(dd); return; }
+  if (act === "chk-combos") { const dd = checkDeck(); if (!dd.cur.length) return toast("Paste a list first."); return openCombos(dd); }
+  if (act === "chk-tab") { if (S.checkTab !== t.dataset.v) glitchNext(".tabpanel"); S.checkTab = t.dataset.v; return render(); }
   if (act === "combos-more" && S.dialog) { S.dialog.showAll = true; return renderDialog(); }
   if (act === "combos-possible" && S.dialog) { S.dialog.showPossible = !S.dialog.showPossible; renderDialog(); if (S.dialog.showPossible) { const el = $("#cb-possible"); if (el) { el.scrollIntoView({ block: "start", behavior: "smooth" }); if (!reduceMotion()) setTimeout(() => playGlitch(el, "pop"), 260); } } return; }
   if (act === "sync-retry") {
