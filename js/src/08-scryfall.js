@@ -40,6 +40,7 @@ const looked = new Set(); let lookTimer = null, looking = false;
 function queueLookups() { clearTimeout(lookTimer); lookTimer = setTimeout(runLookups, 500); }
 async function runLookups() {
   if (looking) return queueLookups();
+  if (S.cardsWaiting) return; // the card list is still on its way (retryCards); it has most of these
   const names = new Set();
   for (const d of S.decks.values()) { d.cur.forEach(c => names.add(c.n)); d.printed.forEach(p => names.add(p.n)); (d.bench && d.bench.in || []).forEach(x => names.add(x.n)); }
   (S.loose.cards || []).forEach(c => names.add(c.n));

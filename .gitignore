@@ -5,3 +5,6 @@ _site/
 health-results.json
 # built from js/src by scripts/build-app.mjs (the tests and the deploy build it)
 js/app.js
+
+# copies of sw.js the offline tests make
+sw-test-*.js

@@ -30,7 +30,7 @@ function render() {
     + `<button class="btn tb theme-step" data-act="theme" data-v="${nx[0]}" aria-label="Theme: ${THEMES[ci][1]}. Switch to ${nx[1]}">${ICONS[THEMES[ci][2]]}<span class="lbl-s">${THEMES[ci][1]}</span></button>`
     + `${accountBtn()}</div></div>`;
   html += `</div>`;
-  if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. Check your connection and reload the page.</div>`;
+  if (S.cardsFailed) html += `<div class="notice">The card list didn't load, so mana costs, types and colors are missing. ${S.cardsWaiting ? "Trying again…" : "Check your connection."} <button class="btn sm" data-act="cards-retry">Try again</button></div>`;
   if (CLOUD.user) for (const why of blocked.values()) html += `<div class="backup-warn limit-warn" role="alert"><span><b>Not saved to your account.</b> ${why} Until then, changes to it are only on this screen and are lost if you close the site.</span></div>`;
   if (CLOUD.enabled && CLOUD.authReady && !CLOUD.user && !CLOUD.failed && S.view === "library") html += `<div class="signin-note"><div><b>Sync your decks</b> Sign in with Google to keep your decks in step between your phone and computer.${S.decks.size || (S.loose.cards || []).length ? " The decks saved in this browser move into your account the first time you sign in." : ""}</div><button class="btn primary" data-act="signin">${ICONS.user}Sign in with Google</button></div>`;
   if (S.ready && !S.live && !CLOUD.user) html += `<div class="notice">Your browser is blocking storage for this site, so changes last only until you close the page. Export a backup before you leave, or allow site data for this page in your browser settings.</div>`;

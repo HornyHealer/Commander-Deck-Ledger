@@ -112,12 +112,27 @@ const benchTimers = new Map();
 function saveSoon(d) { touch(d); persist(); }
 function saveLoose() { S.loose.rev = Math.max(Date.now(), (S.loose.rev || 0) + 1); stampIds(S.loose.cards || []); persist(); queueLookups(); }
 async function removeDeck(id) { S.decks.delete(id); persist(); }
+async function loadCardList() {
+  const res = await fetch("data/cards.json");
+  if (!res.ok) throw new Error(String(res.status));
+  indexCards(await res.json());
+}
+// If the card list doesn't arrive (a weak signal, say), keep trying quietly: a few times over the next couple
+// of minutes, whenever the connection comes back, and from the notice's Try again button. While it's still
+// trying, card lookups wait, so the site doesn't go fetching every card one batch at a time from Scryfall.
+const CARD_RETRY = [4000, 12000, 30000, 60000];
+let cardTries = 0, cardTimer = 0, cardLoading = false;
+async function retryCards() {
+  if (!S.cardsFailed || cardLoading) return;
+  clearTimeout(cardTimer); cardLoading = true;
+  try { await loadCardList(); S.cardsFailed = false; S.cardsWaiting = false; loadExtraCards(); }
+  catch { if (cardTries < CARD_RETRY.length) cardTimer = setTimeout(retryCards, CARD_RETRY[cardTries++]); else S.cardsWaiting = false; }
+  cardLoading = false;
+  if (S.ready) { safeRender(); if (!S.cardsWaiting) queueLookups(); }
+}
+window.addEventListener("online", () => { cardTries = Math.min(cardTries, CARD_RETRY.length - 1); retryCards(); });
 async function boot() {
-  try {
-    const res = await fetch("data/cards.json");
-    if (!res.ok) throw new Error(String(res.status));
-    indexCards(await res.json());
-  } catch { S.cardsFailed = true; }
+  try { await loadCardList(); } catch { S.cardsFailed = S.cardsWaiting = true; cardTimer = setTimeout(retryCards, CARD_RETRY[cardTries++]); }
   loadExtraCards();
   loadStore();
   await cloudInit();

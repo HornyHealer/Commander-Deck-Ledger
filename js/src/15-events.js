@@ -91,6 +91,7 @@ document.addEventListener("click", e => {
   if (act === "hand-mull" && hd) { newHand(hd, (S.hand && S.hand.id === hd.id ? S.hand.mull : 0) + 1); return render(); }
   if (act === "hand-draw" && hd && S.hand && S.hand.id === hd.id) { S.hand.shown = Math.min(S.hand.lib.length, S.hand.shown + 1); return render(); }
   if (act === "theme") return setTheme(t.dataset.v);
+  if (act === "cards-retry") { cardTries = 0; S.cardsWaiting = true; safeRender(); return retryCards(); }
   if (act === "bin-fold") { S.binOpen = !S.binOpen; glitchNext(".bin"); try { localStorage.setItem("cdl-bin-open", S.binOpen ? "1" : "0"); } catch {} return render(); }
   if (act === "check") return go("check");
   if (act === "chk-copy-need") return copyText((S.checkRows || []).filter(r => r.need).map(r => `${r.need}x ${r.n}`).join("\n"), "Need-to-get list");
